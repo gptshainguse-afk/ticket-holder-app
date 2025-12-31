@@ -1,10 +1,13 @@
 import React, { useState, useRef, useEffect, useCallback, memo } from 'react';
-import { Upload, Trash2, Scissors, Info, Move, ZoomIn, FileText, Layers, Printer, Check, ArrowDown, Sparkles, Image as ImageIcon } from 'lucide-react';
+import { Upload, Trash2, Scissors, Move, ZoomIn, FileText, Layers, Printer, Check, ArrowDown, Sparkles, Image as ImageIcon } from 'lucide-react';
 
-// 定義統一的位移靈敏度常數
+// 注意：在標準 npm 開發環境中，您可以使用 npm install jspdf 並取消下行註解
+// import { jsPDF } from 'jspdf';
+
+// 定義統一的位移靈敏度
 const OFFSET_SENSITIVITY = 20; 
 
-// --- 1. 控制列元件 (優化樣式) ---
+// --- 1. 控制列元件 ---
 const ControlRow = memo(({ icon, label, val, min, max, step, onChange, isScale }) => {
   const displayValue = isScale ? Math.round(val * 100) : val;
   
@@ -38,13 +41,13 @@ const ControlRow = memo(({ icon, label, val, min, max, step, onChange, isScale }
         type="range" min={min} max={max} step={step} 
         value={val}
         onChange={(e) => onChange(parseFloat(e.target.value))}
-        className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600 hover:accent-indigo-500 transition-all"
+        className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600 hover:accent-indigo-500 transition-all slider-thumb slider-runnable-track"
       />
     </div>
   );
 });
 
-// --- 2. 圖片編輯卡片 (優化樣式) ---
+// --- 2. 圖片編輯卡片 ---
 const ImageEditorCard = memo(({ 
   id, label, sub, colorBadge, 
   imageState, 
@@ -92,7 +95,6 @@ const ImageEditorCard = memo(({
     ctx.drawImage(img, -drawW/2 + offsetX, -drawH/2 + offsetY, drawW, drawH);
     ctx.restore();
 
-    // 邊框
     ctx.strokeStyle = '#e2e8f0';
     ctx.lineWidth = 2;
     ctx.strokeRect(0, 0, w, h);
@@ -113,7 +115,6 @@ const ImageEditorCard = memo(({
       flex flex-col h-full
       ${hasImage ? 'ring-2 ring-indigo-500/20' : ''}
     `}>
-      {/* 頂部裝飾條 */}
       <div className={`h-1.5 w-full bg-gradient-to-r ${colorBadge}`}></div>
 
       <div className="p-5 flex flex-col h-full">
@@ -136,7 +137,6 @@ const ImageEditorCard = memo(({
           )}
         </div>
 
-        {/* 預覽/上傳區 */}
         <div className={`
           relative w-full rounded-xl overflow-hidden mb-4 flex items-center justify-center 
           transition-all duration-300 min-h-[140px]
@@ -160,7 +160,6 @@ const ImageEditorCard = memo(({
           )}
         </div>
 
-        {/* 控制面板 */}
         {hasImage && (
           <div className="flex flex-col gap-3 bg-white rounded-xl border border-slate-100 p-3 shadow-inner mt-auto animate-in fade-in slide-in-from-bottom-2 duration-300">
               <ControlRow 
@@ -192,6 +191,7 @@ const ImageEditorCard = memo(({
   );
 });
 
+// --- 3. 主應用程式 ---
 const App = () => {
   const [jsPDFLoaded, setJsPDFLoaded] = useState(false);
   const [isIbonMode, setIsIbonMode] = useState(false); 
@@ -216,19 +216,20 @@ const App = () => {
     inner: null,
   });
 
+  // 尺寸定義 (單位: cm)
   const DIMS = {
     width: 21,
     backHeight: 7.8,
     frontHeight: 7.3, 
     pocketHeight: 3,
-    buttonTab: { w: 1, h: 0.5 },
+    buttonTab: { w: 1, h: 0.5, tipW: 0.6 }, // 梯形扣子: 底部1cm, 頂部0.6cm, 高0.5cm
     innerTotalHeight: 15.1,
     glueTab: { w: 1, h: 3 },
-    hole: { w: 1.3, h: 0.2, margin: 0.5 }
+    hole: { w: 0.8, h: 0.3, margin: 0.5 } // 修正扣孔: 0.8 x 0.3 cm
   };
 
   const PREVIEW_PIXELS_PER_CM = 40; 
-  const PRINT_PIXELS_PER_CM = 118.11; 
+  const PRINT_PIXELS_PER_CM = 118.11; // 300 DPI
 
   const outerCanvasRef = useRef(null);
   const innerCanvasRef = useRef(null);
@@ -268,12 +269,15 @@ const App = () => {
     setImages(prev => ({ ...prev, [type]: null }));
   }, []);
 
+  // 繪製：外層 (Page 1)
   const drawOuterLayer = useCallback((ctx, width, height, scaleFactor) => {
     const cm = (val) => val * scaleFactor;
     const offsetMultiplier = scaleFactor / OFFSET_SENSITIVITY;
+    
     const earW = cm(DIMS.glueTab.w);
     const earH = cm(DIMS.glueTab.h);
     const contentW = cm(DIMS.width);
+    
     const startX = (width - contentW) / 2;
 
     ctx.fillStyle = '#ffffff';
@@ -285,13 +289,20 @@ const App = () => {
     const startY = cm(DIMS.buttonTab.h);
     const centerX = contentW / 2;
 
-    const drawSectionImage = (imgData, rectX, rectY, rectW, rectH, rotate) => {
+    const drawSectionImage = (imgData, rectX, rectY, rectW, rectH, rotate, customPath) => {
         ctx.save();
         ctx.beginPath();
-        ctx.rect(rectX, rectY, rectW, rectH);
+        if (customPath) {
+            customPath(ctx); // 使用自訂路徑 (包含梯形扣子)
+        } else {
+            ctx.rect(rectX, rectY, rectW, rectH);
+        }
         ctx.clip();
+        
+        // 計算旋轉中心 (如果是自訂路徑，通常是正面，中心為 rect 的中心)
         const areaCenterX = rectX + rectW / 2;
         const areaCenterY = rectY + rectH / 2;
+        
         ctx.translate(areaCenterX, areaCenterY);
         if (rotate) ctx.rotate(Math.PI);
 
@@ -307,9 +318,13 @@ const App = () => {
             const offsetY = imgData.y * offsetMultiplier;
             ctx.drawImage(img, -drawW / 2 + offsetX, -drawH / 2 + offsetY, drawW, drawH);
         } else {
-            ctx.fillStyle = rotate ? '#fff1f2' : '#eff6ff'; // pink-50 : blue-50
-            if(rotate && rectY > height/2) ctx.fillStyle = '#f0fdf4'; // green-50
-            ctx.fillRect(-rectW/2, -rectH/2, rectW, rectH);
+            ctx.fillStyle = rotate ? '#fff1f2' : '#eff6ff';
+            if(rotate && rectY > height/2) ctx.fillStyle = '#f0fdf4';
+            
+            // 填充背景時要覆蓋整個可能區域
+            const bigSize = Math.max(rectW, rectH) * 2;
+            ctx.fillRect(-bigSize/2, -bigSize/2, bigSize, bigSize);
+            
             ctx.fillStyle = '#94a3b8';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
@@ -319,21 +334,53 @@ const App = () => {
         ctx.restore();
     };
 
+    // 1. 正面 (包含梯形扣子)
     const frontH = cm(DIMS.frontHeight);
-    drawSectionImage(images.front, 0, startY, contentW, frontH, true);
+    
+    // 定義正面含扣子的裁切路徑 (重點：扣子部分現在也包含在剪裁範圍內)
+    const frontPath = (context) => {
+        const tabBaseW = cm(DIMS.buttonTab.w);
+        const tabTipW = cm(DIMS.buttonTab.tipW);
+        const tabH = cm(DIMS.buttonTab.h);
+        
+        // 從左上角開始 (正面主體左上角)
+        context.moveTo(0, startY);
+        
+        // 走到扣子左基座
+        context.lineTo(centerX - tabBaseW/2, startY);
+        // 走到扣子左頂端 (梯形)
+        context.lineTo(centerX - tabTipW/2, 0);
+        // 走到扣子右頂端
+        context.lineTo(centerX + tabTipW/2, 0);
+        // 走到扣子右基座
+        context.lineTo(centerX + tabBaseW/2, startY);
+        
+        // 走到右上角
+        context.lineTo(contentW, startY);
+        // 走到右下角
+        context.lineTo(contentW, startY + frontH);
+        // 走到左下角
+        context.lineTo(0, startY + frontH);
+        context.closePath();
+    };
 
+    // 這裡將正面圖案繪製在包含扣子的路徑中 -> 扣子會顯示圖案
+    drawSectionImage(images.front, 0, startY, contentW, frontH, true, frontPath);
+
+    // 2. 背面
     const backY = startY + frontH;
     const backH = cm(DIMS.backHeight);
     drawSectionImage(images.back, 0, backY, contentW, backH, false);
 
+    // 3. 夾層
     const pocketY = backY + backH;
     const pocketH = cm(DIMS.pocketHeight);
     drawSectionImage(images.pocket, 0, pocketY, contentW, pocketH, true);
 
-    // 耳朵
+    // 繪製耳朵 (背面兩側)
     const drawEar = (x, y, isLeft) => {
         ctx.save();
-        ctx.fillStyle = '#f1f5f9'; // slate-100
+        ctx.fillStyle = '#f1f5f9';
         ctx.strokeStyle = '#64748b';
         ctx.lineWidth = cm(0.04);
         ctx.beginPath();
@@ -369,24 +416,28 @@ const App = () => {
     drawEar(0, backY + backH, true);
     drawEar(contentW, backY + backH, false);
 
-    // Button Tab
-    const btnW = cm(DIMS.buttonTab.w);
-    const btnH = cm(DIMS.buttonTab.h);
+    // 繪製扣子輪廓線 (因為現在扣子是圖片的一部分，我們只畫外框加強視覺)
+    const tabBaseW = cm(DIMS.buttonTab.w);
+    const tabTipW = cm(DIMS.buttonTab.tipW);
+    
     ctx.save();
-    ctx.fillStyle = '#f8fafc';
-    ctx.strokeStyle = '#64748b';
-    ctx.lineWidth = cm(0.05);
+    ctx.strokeStyle = '#334155'; // 與主框線同色
+    ctx.lineWidth = cm(0.06);
     ctx.beginPath();
-    ctx.rect(centerX - btnW/2, 0, btnW, btnH + 2); 
-    ctx.fill();
-    ctx.strokeRect(centerX - btnW/2, 0, btnW, btnH); 
+    // 只畫梯形的三邊，底部不畫(因為連接本體)
+    ctx.moveTo(centerX - tabBaseW/2, startY);
+    ctx.lineTo(centerX - tabTipW/2, 0);
+    ctx.lineTo(centerX + tabTipW/2, 0);
+    ctx.lineTo(centerX + tabBaseW/2, startY);
+    ctx.stroke();
     ctx.restore();
 
-    // Hole
+    // 扣孔 (0.8 x 0.3)
     const holeW = cm(DIMS.hole.w);
     const holeH = cm(DIMS.hole.h);
     const holeMargin = cm(DIMS.hole.margin);
     const holeY = pocketY + holeMargin; 
+    
     ctx.save();
     ctx.fillStyle = '#ffffff';
     ctx.strokeStyle = '#000';
@@ -397,7 +448,7 @@ const App = () => {
     ctx.stroke();
     ctx.restore();
 
-    // Fold Lines
+    // 折線
     ctx.save();
     ctx.setLineDash([cm(0.2), cm(0.2)]);
     ctx.strokeStyle = '#94a3b8';
@@ -412,60 +463,115 @@ const App = () => {
     ctx.stroke();
     ctx.restore();
 
-    // Main Outline
+    // 外框線 (正面+背面+夾層 的矩形外框)
     ctx.strokeStyle = '#334155';
     ctx.lineWidth = cm(0.06);
-    ctx.strokeRect(0, startY, contentW, height - startY);
+    ctx.beginPath();
+    // 左邊界
+    ctx.moveTo(0, startY);
+    ctx.lineTo(0, height); // 直到底部 (包含 pocket)
+    // 底部邊界
+    ctx.lineTo(contentW, height);
+    // 右邊界
+    ctx.lineTo(contentW, startY);
+    // 頂部邊界 (除去扣子部分)
+    ctx.moveTo(0, startY);
+    ctx.lineTo(centerX - tabBaseW/2, startY); // 左頂
+    ctx.moveTo(centerX + tabBaseW/2, startY); // 右頂
+    ctx.lineTo(contentW, startY);
+    ctx.stroke();
+    
     ctx.restore();
 
   }, [images, DIMS]);
 
-
+  // 繪製：內層 (Page 2) - 修正：增加扣子
   const drawInnerLayer = useCallback((ctx, width, height, scaleFactor) => {
     const cm = (val) => val * scaleFactor;
     const offsetMultiplier = scaleFactor / OFFSET_SENSITIVITY;
 
     const contentW = cm(DIMS.width);
-    const contentH = cm(DIMS.innerTotalHeight);
+    const bodyH = cm(DIMS.innerTotalHeight);
+    const tabH = cm(DIMS.buttonTab.h);
+    const tabBaseW = cm(DIMS.buttonTab.w);
+    const tabTipW = cm(DIMS.buttonTab.tipW);
+
+    // 內層總高度 = 本體高 + 扣子高
+    const totalH = bodyH + tabH;
     const startX = (width - contentW) / 2;
-    const startY = (height - contentH) / 2;
+    // Y 起點要預留扣子的高度 (讓扣子在最上方)
+    const startY = (height - totalH) / 2 + tabH; 
+
+    const centerX = contentW / 2;
 
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, width, height);
 
     ctx.save();
+    ctx.translate(startX, startY); // 移動原點到本體左上角
+
+    // 定義內層含扣子的路徑
+    const innerPath = (context) => {
+        context.moveTo(0, 0); // 本體左上
+        
+        // 上方扣子 (梯形) - 注意這裡是往上畫 (Y 負值)
+        context.lineTo(centerX - tabBaseW / 2, 0);
+        context.lineTo(centerX - tabTipW / 2, -tabH);
+        context.lineTo(centerX + tabTipW / 2, -tabH);
+        context.lineTo(centerX + tabBaseW / 2, 0);
+        
+        context.lineTo(contentW, 0); // 本體右上
+        context.lineTo(contentW, bodyH); // 本體右下
+        context.lineTo(0, bodyH); // 本體左下
+        context.closePath();
+    };
+
+    // 1. 裁剪圖片區域 (含扣子)
+    ctx.save();
     ctx.beginPath();
-    ctx.rect(startX, startY, contentW, contentH);
+    innerPath(ctx);
     ctx.clip();
 
     if (images.inner && images.inner.src) {
         const img = images.inner.src;
+        // 圖片中心點：本體中心
+        const areaCenterX = contentW / 2;
+        const areaCenterY = bodyH / 2;
+        
         const scaleW = contentW / img.width;
-        const scaleH = contentH / img.height;
+        const scaleH = bodyH / img.height;
         const baseScale = Math.max(scaleW, scaleH);
         const finalScale = images.inner.scale * baseScale;
         const drawW = img.width * finalScale;
         const drawH = img.height * finalScale;
-        
         const offsetX = images.inner.x * offsetMultiplier;
         const offsetY = images.inner.y * offsetMultiplier;
 
-        ctx.translate(startX + contentW/2, startY + contentH/2);
-        ctx.drawImage(img, -drawW/2 + offsetX, -drawH/2 + offsetY, drawW, drawH);
+        ctx.translate(areaCenterX, areaCenterY);
+        ctx.drawImage(img, -drawW / 2 + offsetX, -drawH / 2 + offsetY, drawW, drawH);
     } else {
         ctx.fillStyle = '#f8fafc';
-        ctx.fillRect(startX, startY, contentW, contentH);
+        // 填充足夠大的區域
+        const big = Math.max(contentW, totalH) * 2;
+        ctx.fillRect(-big/2, -big/2, big, big);
+        
         ctx.fillStyle = '#94a3b8';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
+        ctx.translate(contentW / 2, bodyH / 2);
         ctx.font = `bold ${cm(0.4)}px sans-serif`;
-        ctx.fillText('內層圖 (無耳朵)', startX + contentW/2, startY + contentH/2);
+        ctx.fillText('內層圖 (含扣子)', 0, 0);
     }
     ctx.restore();
 
+    // 2. 繪製外框線
     ctx.strokeStyle = '#334155';
     ctx.lineWidth = cm(0.06);
-    ctx.strokeRect(startX, startY, contentW, contentH);
+    ctx.beginPath();
+    innerPath(ctx);
+    ctx.stroke();
+
+    ctx.restore();
 
   }, [images, DIMS]);
 
@@ -486,7 +592,8 @@ const App = () => {
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     const contentW_cm = DIMS.width + 1;
-    const contentH_cm = DIMS.innerTotalHeight + 1;
+    // 內層高度需增加扣子高度
+    const contentH_cm = DIMS.innerTotalHeight + DIMS.buttonTab.h + 1;
     canvas.width = contentW_cm * PREVIEW_PIXELS_PER_CM;
     canvas.height = contentH_cm * PREVIEW_PIXELS_PER_CM;
     drawInnerLayer(ctx, canvas.width, canvas.height, PREVIEW_PIXELS_PER_CM);
@@ -525,7 +632,8 @@ const App = () => {
 
     const processInner = () => {
         const contentW_cm = DIMS.width;
-        const contentH_cm = DIMS.innerTotalHeight;
+        // 內層總高度 = 本體 + 扣子
+        const contentH_cm = DIMS.innerTotalHeight + DIMS.buttonTab.h;
         canvas.width = contentW_cm * PRINT_PIXELS_PER_CM;
         canvas.height = contentH_cm * PRINT_PIXELS_PER_CM;
         
@@ -545,20 +653,24 @@ const App = () => {
         let x = (pageWidth - pdfTotalW) / 2;
 
         if (isIbonMode) {
-            const p1BlockStartMm = (DIMS.buttonTab.h * 10);
-            const p1BlockHeightMm = (DIMS.frontHeight + DIMS.backHeight) * 10;
-            const p1BlockCenterRelativeMm = p1BlockStartMm + (p1BlockHeightMm / 2);
-            const p1BlockCenterAbsoluteY = outerTopMargin + p1BlockCenterRelativeMm;
-            const p2TargetCenterY = pageHeight - p1BlockCenterAbsoluteY;
-            const imageContentHeightMm = contentH_cm * 10;
-            finalImageY = p2TargetCenterY - (imageContentHeightMm / 2);
-            // 校正
-            finalImageY = finalImageY - 1;
-            x = x + 2;
+            // ibon 模式：使用簡單的上下對位邏輯
+            // 外層 PDF 上邊界 = outerTopMargin
+            // 內層翻轉後，扣子在下方，我們希望扣子底部對齊外層的扣子頂部位置
+            // 因為是長邊翻頁，這其實就是將圖片置底於 `pageHeight - outerTopMargin`
+            finalImageY = pageHeight - outerTopMargin - pdfTotalH;
+            
+            // 偏移校正 (User Feedback)
+            finalImageY = finalImageY - 1; // 上移 1mm
+            x = x + 2; // 右移 2mm
         } else {
+            // 單面列印：垂直置中 (這裡為了美觀，可以稍微對齊外層的身體部分)
+            // 外層 body 其實是從 Margin + Tab 開始的
             const bodyInImageOffsetY = (pdfTotalH - (DIMS.innerTotalHeight * 10)) / 2;
+            // 讓內層的本體上緣對齊外層的本體上緣
             const targetBodyY = outerTopMargin + (DIMS.buttonTab.h * 10);
-            finalImageY = targetBodyY - bodyInImageOffsetY;
+            // 由於現在內層也有 Tab，內層圖片頂端就是 Tab 頂端
+            // 所以直接對齊外層頂端即可 (都是 Tab 頂端)
+            finalImageY = outerTopMargin;
         }
         doc.addImage(imgData, 'JPEG', x, finalImageY, pdfTotalW, pdfTotalH);
     };
@@ -578,10 +690,8 @@ const App = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 font-sans text-slate-800 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]">
+    <div className="min-h-screen font-sans text-slate-800">
       <div className="max-w-7xl mx-auto px-4 py-8 md:px-8">
-        
-        {/* Header */}
         <header className="mb-10 text-center flex flex-col items-center">
           <div className="bg-white p-4 rounded-full shadow-lg mb-4 ring-4 ring-indigo-50">
             <Scissors className="w-10 h-10 text-indigo-600" />
@@ -594,7 +704,6 @@ const App = () => {
           </p>
         </header>
 
-        {/* 編輯區域 Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 mb-12">
             <ImageEditorCard 
                 id="front" 
@@ -608,7 +717,6 @@ const App = () => {
                 onUpdate={updateImageSettings}
                 onRemove={removeImage}
             />
-
             <ImageEditorCard 
                 id="back" 
                 label="2. 背面 (主體)" 
@@ -621,7 +729,6 @@ const App = () => {
                 onUpdate={updateImageSettings}
                 onRemove={removeImage}
             />
-
             <ImageEditorCard 
                 id="pocket" 
                 label="3. 夾層 (底對底)" 
@@ -634,7 +741,6 @@ const App = () => {
                 onUpdate={updateImageSettings}
                 onRemove={removeImage}
             />
-
             <ImageEditorCard 
                 id="inner" 
                 label="4. 內層 (襯紙)" 
@@ -649,7 +755,6 @@ const App = () => {
             />
         </div>
 
-        {/* 下載與全域預覽控制列 */}
         <div className="bg-white rounded-3xl shadow-xl shadow-indigo-100/50 border border-indigo-50 p-6 md:p-8 mb-10 overflow-hidden relative">
             <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-50 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 opacity-50 pointer-events-none"></div>
             
@@ -667,7 +772,6 @@ const App = () => {
                 </div>
 
                 <div className="flex flex-col sm:flex-row items-center gap-4 w-full md:w-auto">
-                    {/* ibon Toggle */}
                     <div 
                         className={`
                             group flex items-center gap-4 px-5 py-4 rounded-2xl border cursor-pointer transition-all duration-300 w-full sm:w-auto select-none
@@ -702,24 +806,15 @@ const App = () => {
                             active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed
                             bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500
                         `}
-                        disabled={!jsPDFLoaded}
                     >
-                        {jsPDFLoaded ? (
-                            <>
-                                <FileText size={20} /> 
-                                <span>下載完整 PDF</span>
-                            </>
-                        ) : (
-                            <span>載入中...</span>
-                        )}
+                        <FileText size={20} /> 
+                        <span>下載完整 PDF</span>
                     </button>
                 </div>
             </div>
         </div>
 
-        {/* 預覽區塊 */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {/* Page 1 */}
             <div className="bg-white p-6 rounded-3xl shadow-xl border border-slate-100 flex flex-col items-center">
                 <div className="w-full flex justify-between items-center mb-6 px-2">
                     <h3 className="font-bold text-slate-700 flex items-center gap-2">
@@ -733,7 +828,6 @@ const App = () => {
                 </div>
             </div>
 
-            {/* Page 2 */}
             <div className={`
                 bg-white p-6 rounded-3xl shadow-xl border border-slate-100 flex flex-col items-center transition-all duration-500
                 ${isIbonMode ? 'ring-2 ring-indigo-500/30 shadow-indigo-100' : ''}
@@ -741,7 +835,7 @@ const App = () => {
                 <div className="w-full flex justify-between items-center mb-6 px-2">
                     <h3 className="font-bold text-slate-700 flex items-center gap-2">
                         <span className="w-8 h-8 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center text-sm font-bold">2</span>
-                        頁面 2：內層 (襯紙)
+                        頁面 2：內層 (襯紙+扣子)
                     </h3>
                     {isIbonMode ? (
                         <span className="flex items-center gap-1.5 text-xs font-bold text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-full border border-indigo-100">
@@ -749,13 +843,11 @@ const App = () => {
                             已偏移校正
                         </span>
                     ) : (
-                         <span className="text-xs font-mono text-slate-400 bg-slate-50 px-2 py-1 rounded">21 x 15.1 cm</span>
+                        <span className="text-xs font-mono text-slate-400 bg-slate-50 px-2 py-1 rounded">21 x 15.6 cm</span>
                     )}
                 </div>
                 <div className="w-full bg-slate-50 rounded-xl border-2 border-dashed border-slate-200 p-4 flex justify-center overflow-auto relative">
                     <canvas ref={innerCanvasRef} className="bg-white shadow-lg max-w-full h-auto rounded-sm" style={{ maxHeight: '500px' }} />
-                    
-                    {/* 示意提示 */}
                     {isIbonMode && (
                         <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
                             <div className="bg-black/50 text-white px-4 py-2 rounded-lg backdrop-blur-sm text-sm font-medium">
@@ -772,7 +864,6 @@ const App = () => {
                 Designed for DIY Fans • 建議使用 160磅以上紙張列印
             </p>
         </footer>
-
       </div>
     </div>
   );
