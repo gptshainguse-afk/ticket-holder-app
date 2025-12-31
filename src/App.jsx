@@ -73,11 +73,13 @@ const SetupWizard = ({ onComplete }) => {
     if (step === 1.5) {
       if (customWidth > 8.64) {
         setCustomError('票券寬度不可大於 8.64cm，否則展開圖將超出 A4 紙張範圍。');
+      } else if (customLength > 27) {
+        setCustomError('票券長度不可大於 27cm，否則將超出 A4 紙張範圍。');
       } else {
         setCustomError('');
       }
     }
-  }, [customWidth, step]);
+  }, [customWidth, customLength, step]);
 
   const handleNext = () => {
     if (step === 1) {
@@ -656,7 +658,8 @@ const App = () => {
         context.closePath();
     };
 
-    drawSectionImage(images.front, 0, startY, contentW, frontH, true, frontPath);
+    // 修正：傳入包含扣子在內的完整邊界框 (Y=0 到 frontH+startY)
+    drawSectionImage(images.front, 0, 0, contentW, frontH + startY, true, frontPath);
 
     // 2. 背面
     const backY = startY + frontH;
@@ -813,6 +816,8 @@ const App = () => {
         context.moveTo(0, 0); 
         
         if (hasTab) {
+            // 注意：這裡是相對於本體左上角 (0,0) 的路徑
+            // 往上畫扣子，Y 軸為負
             context.lineTo(centerX - tabBaseW / 2, 0);
             context.lineTo(centerX - tabTipW / 2, -tabH);
             context.lineTo(centerX + tabTipW / 2, -tabH);
@@ -834,11 +839,15 @@ const App = () => {
 
     if (images.inner && images.inner.src) {
         const img = images.inner.src;
+        // 修正：圖片中心點應為「整體形狀(含扣子)的中心」，而非僅「本體中心」
+        // 整體形狀的高度範圍是：-tabH 到 bodyH
+        // 中心 Y = (-tabH + bodyH) / 2
         const areaCenterX = contentW / 2;
-        const areaCenterY = bodyH / 2;
+        const areaCenterY = (bodyH - tabH) / 2;
         
         const scaleW = contentW / img.width;
-        const scaleH = bodyH / img.height;
+        // 修正：縮放高度基準應為「本體+扣子」的總高
+        const scaleH = (bodyH + tabH) / img.height;
         const baseScale = Math.max(scaleW, scaleH);
         const finalScale = images.inner.scale * baseScale;
         const drawW = img.width * finalScale;
@@ -1101,7 +1110,7 @@ const App = () => {
                                 <Sparkles size={14} className="text-amber-500" />
                             </span>
                             <span className="text-xs text-indigo-700/70 mt-0.5">
-                                內層自動旋轉 + 雙面偏移校正
+                                7-11列印選用彩色雙面列印+特殊用紙
                             </span>
                             <span className="text-[11px] text-rose-500 font-bold mt-1">
                                 ※ 如自行列印，請設定「長邊翻頁」
