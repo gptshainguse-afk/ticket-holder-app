@@ -1,3 +1,29 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+/* 自訂滑桿樣式 */
+@layer components {
+  .slider-thumb::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    height: 16px;
+    width: 16px;
+    border-radius: 50%;
+    background: #4f46e5; /* indigo-600 */
+    cursor: pointer;
+    margin-top: -6px;
+    box-shadow: 0 0 0 2px #fff;
+  }
+
+  .slider-runnable-track::-webkit-slider-runnable-track {
+    width: 100%;
+    height: 4px;
+    cursor: pointer;
+    background: #e2e8f0; /* slate-200 */
+    border-radius: 2px;
+  }
+}
+
+body {
+  @apply bg-slate-50 text-slate-800 antialiased;
+  background-image: radial-gradient(#e0e7ff 1px, transparent 1px);
+  background-size: 24px 24px;
+}
