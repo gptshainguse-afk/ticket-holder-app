@@ -182,8 +182,6 @@ const SetupWizard = ({ onComplete }) => {
                 </div>
             ) : step === 1.5 ? (
                 <div className="space-y-6">
-                    {/* 已移除公式提示區塊 */}
-
                     <div className="space-y-4">
                         <div>
                             <label className="block text-sm font-bold text-slate-700 mb-1">票券長度 (cm)</label>
@@ -487,7 +485,7 @@ const ImageEditorCard = memo(({
 // --- 4. 主應用程式 ---
 const App = () => {
   const [jsPDFLoaded, setJsPDFLoaded] = useState(false);
-  const [isIbonMode, setIsIbonMode] = useState(false); 
+  const [isIbonMode, setIsIbonMode] = useState(true); // Default to true
   
   // 新增狀態: 應用程式模式 ('setup' | 'editor')
   const [appMode, setAppMode] = useState('setup');
@@ -1090,28 +1088,23 @@ const App = () => {
                 </div>
 
                 <div className="flex flex-col sm:flex-row items-center gap-4 w-full md:w-auto">
+                    {/* ibon Static Info */}
                     <div 
-                        className={`
-                            group flex items-center gap-4 px-5 py-4 rounded-2xl border cursor-pointer transition-all duration-300 w-full sm:w-auto select-none
-                            ${isIbonMode 
-                                ? 'bg-indigo-50/80 border-indigo-200 shadow-inner ring-1 ring-indigo-200' 
-                                : 'bg-white border-slate-200 hover:border-indigo-300 hover:shadow-md'}
-                        `}
-                        onClick={() => setIsIbonMode(!isIbonMode)}
+                        className="flex items-center gap-4 px-5 py-4 rounded-2xl border border-indigo-200 bg-indigo-50/50 w-full sm:w-auto"
                     >
-                        <div className={`
-                            w-12 h-7 flex items-center rounded-full p-1 transition-colors duration-300
-                            ${isIbonMode ? 'bg-indigo-600' : 'bg-slate-300 group-hover:bg-slate-400'}
-                        `}>
-                            <div className={`bg-white w-5 h-5 rounded-full shadow-md transform transition-transform duration-300 ${isIbonMode ? 'translate-x-5' : 'translate-x-0'}`} />
+                        <div className="w-10 h-10 flex items-center justify-center rounded-full bg-indigo-100 text-indigo-600">
+                            <Printer size={20} />
                         </div>
                         <div className="flex flex-col">
-                            <span className={`font-bold text-sm flex items-center gap-2 ${isIbonMode ? 'text-indigo-700' : 'text-slate-700'}`}>
-                                <Printer size={16} /> ibon 雙面列印校正
-                                {isIbonMode && <Sparkles size={14} className="text-amber-500 animate-pulse" />}
+                            <span className="font-bold text-sm text-indigo-900 flex items-center gap-2">
+                                已啟用 ibon 列印優化
+                                <Sparkles size={14} className="text-amber-500" />
                             </span>
-                            <span className="text-xs text-slate-500 mt-0.5">
-                                {isIbonMode ? '已啟用：自動旋轉 180° + 偏移補償' : '未啟用：標準置中 (適合單面)'}
+                            <span className="text-xs text-indigo-700/70 mt-0.5">
+                                內層自動旋轉 + 雙面偏移校正
+                            </span>
+                            <span className="text-[11px] text-rose-500 font-bold mt-1">
+                                ※ 如自行列印，請設定「長邊翻頁」
                             </span>
                         </div>
                     </div>
