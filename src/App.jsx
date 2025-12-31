@@ -24,21 +24,21 @@ const TICKET_OPTIONS = [
     { 
       id: '711', 
       name: '7-Eleven', 
-      desc: '標準尺寸 (23cm)', 
+      desc: '標準尺寸', 
       color: 'bg-green-600',
       dims: { ...DEFAULT_DIMS, width: 23 } 
     },
     { 
       id: 'family', 
       name: '全家 FamilyMart', 
-      desc: '短版尺寸 (20cm)', 
+      desc: '短版尺寸', 
       color: 'bg-blue-500',
       dims: { ...DEFAULT_DIMS, width: 20 }
     },
     { 
       id: 'hilife', 
       name: '萊爾富 / OK', 
-      desc: '特規尺寸 (正面8.5/背面9)', 
+      desc: '特規尺寸', 
       color: 'bg-rose-500',
       dims: { 
         ...DEFAULT_DIMS, 
@@ -1025,7 +1025,7 @@ const App = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 mb-12">
             <ImageEditorCard 
                 id="front" 
-                label="1. 正面 (頭對頭)" 
+                label="1. 正面" 
                 sub={`${dims.width} x ${dims.frontHeight} cm`} 
                 colorBadge="from-pink-400 to-rose-400"
                 imageState={images.front}
@@ -1037,7 +1037,7 @@ const App = () => {
             />
             <ImageEditorCard 
                 id="back" 
-                label="2. 背面 (主體)" 
+                label="2. 背面" 
                 sub={`${dims.width} x ${dims.backHeight} cm`} 
                 colorBadge="from-blue-400 to-cyan-400"
                 imageState={images.back}
@@ -1049,7 +1049,7 @@ const App = () => {
             />
             <ImageEditorCard 
                 id="pocket" 
-                label="3. 夾層 (底對底)" 
+                label="3. 夾層" 
                 sub={`${dims.width} x ${dims.pocketHeight} cm`} 
                 colorBadge="from-emerald-400 to-teal-400"
                 imageState={images.pocket}
@@ -1061,7 +1061,7 @@ const App = () => {
             />
             <ImageEditorCard 
                 id="inner" 
-                label="4. 內層 (襯紙)" 
+                label="4. 內層" 
                 sub={`${dims.width} x ${dims.innerTotalHeight} cm`} 
                 colorBadge="from-violet-400 to-purple-400"
                 imageState={images.inner}
