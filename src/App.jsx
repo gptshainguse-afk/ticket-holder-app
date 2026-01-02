@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, memo } from 'react';
-import { Upload, Trash2, Scissors, Move, ZoomIn, FileText, Layers, Printer, Check, ArrowDown, Sparkles, Settings, ChevronRight, Store, CreditCard, PenTool, ToggleLeft, ToggleRight, Image as ImageIcon, Ruler, AlertCircle } from 'lucide-react';
+import { Upload, Trash2, Scissors, Move, ZoomIn, FileText, Layers, Printer, Check, ArrowDown, Sparkles, Settings, ChevronRight, Store, CreditCard, PenTool, ToggleLeft, ToggleRight, Image as ImageIcon, Ruler, AlertCircle, Home, AlertTriangle } from 'lucide-react';
 
 // 注意：在標準 npm 開發環境中，您可以使用 npm install jspdf 並取消下行註解
 // import { jsPDF } from 'jspdf';
@@ -19,26 +19,27 @@ const DEFAULT_DIMS = {
   hole: { w: 0.8, h: 0.3, margin: 0.5 }
 };
 
-// 定義票券選項 (移至外部以便 App 與 SetupWizard 共用)
+// 定義票券選項
+// 注意：這裡雖然引用了 DEFAULT_DIMS，但在 SetupWizard 中我們會確保深層複製，避免修改到原始值
 const TICKET_OPTIONS = [
     { 
       id: '711', 
       name: '7-Eleven', 
-      desc: '標準尺寸', 
+      desc: '標準尺寸 (23cm)', 
       color: 'bg-green-600',
       dims: { ...DEFAULT_DIMS, width: 23 } 
     },
     { 
       id: 'family', 
       name: '全家 FamilyMart', 
-      desc: '短版尺寸', 
+      desc: '短版尺寸 (20cm)', 
       color: 'bg-blue-500',
       dims: { ...DEFAULT_DIMS, width: 20 }
     },
     { 
       id: 'hilife', 
       name: '萊爾富 / OK', 
-      desc: '特規尺寸', 
+      desc: '特規尺寸 (正面8.5/背面9)', 
       color: 'bg-rose-500',
       dims: { 
         ...DEFAULT_DIMS, 
@@ -53,69 +54,107 @@ const TICKET_OPTIONS = [
         name: '自訂尺寸',
         desc: '輸入票券長寬自動計算',
         color: 'bg-slate-500',
-        dims: null // 將在下一步計算
+        dims: null 
     }
 ];
 
-// --- 1. 設定精靈元件 (Setup Wizard) ---
+// --- 1. 設定精靈元件 ---
 const SetupWizard = ({ onComplete }) => {
   const [step, setStep] = useState(1);
-  const [ticketType, setTicketType] = useState('711'); // default
+  const [ticketType, setTicketType] = useState('711'); 
   const [hasTab, setHasTab] = useState(true);
   
-  // 自訂尺寸狀態
   const [customLength, setCustomLength] = useState(15);
   const [customWidth, setCustomWidth] = useState(6);
+  
   const [customError, setCustomError] = useState('');
+  const [tabWarning, setTabWarning] = useState('');
 
-  // 驗證自訂尺寸
+  // 驗證自訂尺寸與卡扣邏輯
   useEffect(() => {
     if (step === 1.5) {
-      if (customWidth > 8.64) {
-        setCustomError('票券寬度不可大於 8.64cm，否則展開圖將超出 A4 紙張範圍。');
-      } else if (customLength > 27) {
-        setCustomError('票券長度不可大於 27cm，否則將超出 A4 紙張範圍。');
+      // 1. 計算預計的正面與背面高度
+      const w = parseFloat(customWidth);
+      
+      let calcFrontHeight;
+      if (w > 8) {
+          calcFrontHeight = 8.5;
       } else {
-        setCustomError('');
+          calcFrontHeight = w / 0.96;
+          if (calcFrontHeight > 8.5) calcFrontHeight = 8.5;
       }
+
+      let calcBackHeight = calcFrontHeight + 0.5;
+      if (calcBackHeight > 9) calcBackHeight = 9;
+
+      const totalBodyHeight = calcFrontHeight + calcBackHeight;
+
+      // 2. 重置狀態
+      let errorMsg = '';
+      let warningMsg = '';
+
+      // 3. 檢查長度
+      if (customLength > 27) {
+        errorMsg = '票券長度不可大於 27cm，否則將超出 A4 紙張範圍。';
+      }
+      // 4. 檢查寬度
+      else if (w > 8.5) {
+        errorMsg = '票券寬度不可大於 8.5cm。';
+      }
+      
+      // 5. 檢查總高度 (A4 高度限制)
+      else if (totalBodyHeight > 17.5) {
+        errorMsg = `計算後的票夾展開高度過大 (${totalBodyHeight.toFixed(1)} + 3.5 > 21)，將超出 A4 紙張範圍。`;
+      } 
+      
+      // 6. 檢查卡扣限制
+      else if (totalBodyHeight > 17) {
+        warningMsg = '因尺寸接近 A4 極限，已強制關閉卡扣功能 (將厚度加回正面)。';
+        if (hasTab) setHasTab(false); 
+      } else {
+        if (warningMsg === '') setTabWarning('');
+      }
+
+      setCustomError(errorMsg);
+      setTabWarning(warningMsg);
     }
-  }, [customWidth, customLength, step]);
+  }, [customWidth, customLength, step, hasTab]);
 
   const handleNext = () => {
     if (step === 1) {
         if (ticketType === 'custom') {
-            setStep(1.5); // 進入自訂輸入
+            setStep(1.5);
         } else {
-            setStep(2); // 進入卡扣設定
+            setStep(2);
         }
     } else if (step === 1.5) {
-        if (customError) return; // 有錯誤不能繼續
+        if (customError) return;
         setStep(2);
     } else {
-      // 計算最終尺寸
       let finalDims;
 
       if (ticketType === 'custom') {
-          // --- 自訂尺寸計算邏輯 ---
-          // 1. 票夾寬度 (長邊): (長度 + 1) / 0.96，無條件進位
+          const w = parseFloat(customWidth);
+          // 1. 票夾寬度
           const calcWidth = Math.ceil((parseFloat(customLength) + 1) / 0.96);
           
-          // 2. 票夾高度 (短邊/正面): (寬度 + 1.3) / 0.96 (修正後公式)
-          let calcFrontHeight = (parseFloat(customWidth) + 1.3) / 0.96;
-          
-          // 3. 高度限制: 若票寬 > 8.5，則正面高最多 9
-          if (parseFloat(customWidth) > 8.5) {
-              calcFrontHeight = 9;
+          // 2. 票夾高度計算
+          let calcFrontHeight;
+          if (w > 8) {
+              calcFrontHeight = 8.5;
+          } else {
+              calcFrontHeight = w / 0.96;
+              if (calcFrontHeight > 8.5) calcFrontHeight = 8.5;
           }
 
-          // 4. 背面高度: 正面 + 0.5 (緩衝)
-          const calcBackHeight = calcFrontHeight + 0.5;
+          let calcBackHeight = calcFrontHeight + 0.5;
+          if (calcBackHeight > 9) calcBackHeight = 9;
 
-          // 5. 內層高度: 正面 + 背面
           const calcInnerHeight = calcFrontHeight + calcBackHeight;
 
+          // 修正：使用 JSON parse/stringify 進行深層複製，避免汙染 DEFAULT_DIMS
           finalDims = {
-              ...DEFAULT_DIMS,
+              ...JSON.parse(JSON.stringify(DEFAULT_DIMS)),
               width: calcWidth,
               frontHeight: Number(calcFrontHeight.toFixed(2)),
               backHeight: Number(calcBackHeight.toFixed(2)),
@@ -123,12 +162,11 @@ const SetupWizard = ({ onComplete }) => {
           };
       } else {
           const selectedOption = TICKET_OPTIONS.find(t => t.id === ticketType);
+          // 這裡已經有深層複製，是安全的
           finalDims = JSON.parse(JSON.stringify(selectedOption.dims));
       }
 
-      // 處理卡扣邏輯
       if (!hasTab) {
-        // 如果不做卡扣：把扣子高度加回正面高度
         finalDims.frontHeight += finalDims.buttonTab.h;
         finalDims.buttonTab.h = 0;
       }
@@ -140,7 +178,6 @@ const SetupWizard = ({ onComplete }) => {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
       <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col transition-all">
-        {/* Header */}
         <div className="bg-indigo-600 p-6 text-white text-center relative overflow-hidden">
             <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-2xl -translate-y-1/2 translate-x-1/2"></div>
             <h2 className="text-2xl font-bold flex items-center justify-center gap-2 relative z-10">
@@ -156,14 +193,16 @@ const SetupWizard = ({ onComplete }) => {
             </p>
         </div>
 
-        {/* Content */}
         <div className="p-6 md:p-8">
             {step === 1 ? (
                 <div className="grid grid-cols-1 gap-3">
                     {TICKET_OPTIONS.map((opt) => (
                         <div 
                             key={opt.id}
-                            onClick={() => setTicketType(opt.id)}
+                            onClick={() => {
+                                setTicketType(opt.id);
+                                setHasTab(true); // 切換類型時重置卡扣選項
+                            }}
                             className={`
                                 cursor-pointer flex items-center p-4 rounded-xl border-2 transition-all duration-200
                                 ${ticketType === opt.id 
@@ -224,14 +263,22 @@ const SetupWizard = ({ onComplete }) => {
                                     <span>{customError}</span>
                                 </div>
                             )}
+                            
+                            {/* 顯示卡扣警告訊息 (在 Step 1.5 預覽) */}
+                            {!customError && tabWarning && (
+                                <div className="flex items-start gap-2 mt-2 text-amber-600 text-xs font-bold bg-amber-50 p-2 rounded-lg border border-amber-200">
+                                    <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+                                    <span>{tabWarning}</span>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
             ) : (
                 <div className="space-y-6">
                     <div 
-                        className={`cursor-pointer p-5 rounded-xl border-2 transition-all ${hasTab ? 'border-indigo-500 bg-indigo-50' : 'border-slate-200'}`}
-                        onClick={() => setHasTab(true)}
+                        className={`cursor-pointer p-5 rounded-xl border-2 transition-all ${hasTab ? 'border-indigo-500 bg-indigo-50' : 'border-slate-200'} ${tabWarning ? 'opacity-50 cursor-not-allowed grayscale' : ''}`}
+                        onClick={() => !tabWarning && setHasTab(true)}
                     >
                         <div className="flex justify-between items-center mb-2">
                             <span className="font-bold text-slate-800 flex items-center gap-2">
@@ -260,11 +307,18 @@ const SetupWizard = ({ onComplete }) => {
                             移除上方凸起，並將該長度(0.5cm)直接加回正面主體，外觀為平整的長方形。
                         </p>
                     </div>
+                    
+                    {/* 卡扣頁面再次提醒 */}
+                    {tabWarning && (
+                        <div className="flex items-center justify-center gap-2 text-amber-600 text-xs font-bold bg-amber-50 p-2 rounded-lg border border-amber-200">
+                            <AlertTriangle size={14} />
+                            <span>{tabWarning}</span>
+                        </div>
+                    )}
                 </div>
             )}
         </div>
 
-        {/* Footer */}
         <div className="p-6 border-t border-slate-100 bg-slate-50 flex justify-between">
             {step > 1 ? (
                 <button 
@@ -280,7 +334,7 @@ const SetupWizard = ({ onComplete }) => {
                     上一步
                 </button>
             ) : (
-                <div></div> // Spacer
+                <div></div>
             )}
             <button 
                 onClick={handleNext}
@@ -489,12 +543,9 @@ const App = () => {
   const [jsPDFLoaded, setJsPDFLoaded] = useState(false);
   const [isIbonMode, setIsIbonMode] = useState(true); // Default to true
   
-  // 新增狀態: 應用程式模式 ('setup' | 'editor')
   const [appMode, setAppMode] = useState('setup');
-  // 新增狀態: 尺寸設定 (由 Wizard 傳入)
   const [dims, setDims] = useState(DEFAULT_DIMS);
   const [hasTab, setHasTab] = useState(true);
-  // 新增狀態: 票券類型 ID
   const [ticketTypeId, setTicketTypeId] = useState('711');
 
   useEffect(() => {
@@ -517,7 +568,6 @@ const App = () => {
     inner: null,
   });
 
-  // Wizard 完成時的回調
   const handleSetupComplete = (newDims, type, tabEnabled) => {
       setDims(newDims);
       setHasTab(tabEnabled);
@@ -526,7 +576,7 @@ const App = () => {
   };
 
   const PREVIEW_PIXELS_PER_CM = 40; 
-  const PRINT_PIXELS_PER_CM = 118.11; // 300 DPI
+  const PRINT_PIXELS_PER_CM = 118.11;
 
   const outerCanvasRef = useRef(null);
   const innerCanvasRef = useRef(null);
@@ -566,7 +616,6 @@ const App = () => {
     setImages(prev => ({ ...prev, [type]: null }));
   }, []);
 
-  // 繪製：外層 (Page 1)
   const drawOuterLayer = useCallback((ctx, width, height, scaleFactor) => {
     const cm = (val) => val * scaleFactor;
     const offsetMultiplier = scaleFactor / OFFSET_SENSITIVITY;
@@ -583,7 +632,6 @@ const App = () => {
     ctx.save();
     ctx.translate(startX, 0);
 
-    // 這裡 buttonTab.h 如果在 setup 設為 0，startY 就會是 0，正常
     const startY = cm(dims.buttonTab.h);
     const centerX = contentW / 2;
 
@@ -630,14 +678,11 @@ const App = () => {
         ctx.restore();
     };
 
-    // 1. 正面
     const frontH = cm(dims.frontHeight);
     
-    // 正面裁切路徑：如果有卡扣才畫梯形，否則畫矩形
     const frontPath = (context) => {
         const tabBaseW = cm(dims.buttonTab.w);
         const tabTipW = cm(dims.buttonTab.tipW);
-        // 如果 hasTab = false, dims.buttonTab.h = 0, 以下邏輯依然成立(變平)
         const tabH = cm(dims.buttonTab.h);
         
         context.moveTo(0, startY);
@@ -648,7 +693,6 @@ const App = () => {
             context.lineTo(centerX + tabTipW/2, 0);
             context.lineTo(centerX + tabBaseW/2, startY);
         } else {
-            // 無卡扣，直接平的
             context.lineTo(contentW, startY); 
         }
         
@@ -658,20 +702,16 @@ const App = () => {
         context.closePath();
     };
 
-    // 修正：傳入包含扣子在內的完整邊界框 (Y=0 到 frontH+startY)
     drawSectionImage(images.front, 0, 0, contentW, frontH + startY, true, frontPath);
 
-    // 2. 背面
     const backY = startY + frontH;
     const backH = cm(dims.backHeight);
     drawSectionImage(images.back, 0, backY, contentW, backH, false);
 
-    // 3. 夾層
     const pocketY = backY + backH;
     const pocketH = cm(dims.pocketHeight);
     drawSectionImage(images.pocket, 0, pocketY, contentW, pocketH, true);
 
-    // 繪製耳朵
     const drawEar = (x, y, isLeft) => {
         ctx.save();
         ctx.fillStyle = '#f1f5f9';
@@ -710,7 +750,6 @@ const App = () => {
     drawEar(0, backY + backH, true);
     drawEar(contentW, backY + backH, false);
 
-    // 扣子輪廓 (僅在有卡扣時繪製)
     if (hasTab) {
         const tabBaseW = cm(dims.buttonTab.w);
         const tabTipW = cm(dims.buttonTab.tipW);
@@ -727,7 +766,6 @@ const App = () => {
         ctx.restore();
     }
 
-    // 扣孔 (僅在有卡扣時繪製)
     if (hasTab) {
         const holeW = cm(dims.hole.w);
         const holeH = cm(dims.hole.h);
@@ -745,7 +783,6 @@ const App = () => {
         ctx.restore();
     }
 
-    // 折線
     ctx.save();
     ctx.setLineDash([cm(0.2), cm(0.2)]);
     ctx.strokeStyle = '#94a3b8';
@@ -760,20 +797,15 @@ const App = () => {
     ctx.stroke();
     ctx.restore();
 
-    // 外框線
     ctx.strokeStyle = '#334155';
     ctx.lineWidth = cm(0.06);
     ctx.beginPath();
     
-    // 左邊界
     ctx.moveTo(0, startY);
     ctx.lineTo(0, height); 
-    // 下邊界
     ctx.lineTo(contentW, height);
-    // 右邊界
     ctx.lineTo(contentW, startY);
     
-    // 上邊界 (根據是否有卡扣決定路徑)
     if (hasTab) {
         const tabBaseW = cm(dims.buttonTab.w);
         ctx.moveTo(0, startY);
@@ -781,7 +813,7 @@ const App = () => {
         ctx.moveTo(centerX + tabBaseW/2, startY); 
         ctx.lineTo(contentW, startY);
     } else {
-        ctx.lineTo(0, startY); // 直接連起來
+        ctx.lineTo(0, startY);
     }
     
     ctx.stroke();
@@ -789,14 +821,13 @@ const App = () => {
 
   }, [images, dims, hasTab]);
 
-  // 繪製：內層 (Page 2)
   const drawInnerLayer = useCallback((ctx, width, height, scaleFactor) => {
     const cm = (val) => val * scaleFactor;
     const offsetMultiplier = scaleFactor / OFFSET_SENSITIVITY;
 
     const contentW = cm(dims.width);
     const bodyH = cm(dims.innerTotalHeight);
-    const tabH = cm(dims.buttonTab.h); // 若 hasTab=false，這裡會是0
+    const tabH = cm(dims.buttonTab.h);
     const tabBaseW = cm(dims.buttonTab.w);
     const tabTipW = cm(dims.buttonTab.tipW);
 
@@ -816,14 +847,10 @@ const App = () => {
         context.moveTo(0, 0); 
         
         if (hasTab) {
-            // 注意：這裡是相對於本體左上角 (0,0) 的路徑
-            // 往上畫扣子，Y 軸為負
             context.lineTo(centerX - tabBaseW / 2, 0);
             context.lineTo(centerX - tabTipW / 2, -tabH);
             context.lineTo(centerX + tabTipW / 2, -tabH);
             context.lineTo(centerX + tabBaseW / 2, 0);
-        } else {
-            // 平的頂部
         }
 
         context.lineTo(contentW, 0); 
@@ -839,14 +866,10 @@ const App = () => {
 
     if (images.inner && images.inner.src) {
         const img = images.inner.src;
-        // 修正：圖片中心點應為「整體形狀(含扣子)的中心」，而非僅「本體中心」
-        // 整體形狀的高度範圍是：-tabH 到 bodyH
-        // 中心 Y = (-tabH + bodyH) / 2
         const areaCenterX = contentW / 2;
         const areaCenterY = (bodyH - tabH) / 2;
         
         const scaleW = contentW / img.width;
-        // 修正：縮放高度基準應為「本體+扣子」的總高
         const scaleH = (bodyH + tabH) / img.height;
         const baseScale = Math.max(scaleW, scaleH);
         const finalScale = images.inner.scale * baseScale;
@@ -882,7 +905,7 @@ const App = () => {
   }, [images, dims, hasTab]);
 
   useEffect(() => {
-    if (appMode !== 'editor') return; // 只在編輯模式繪製
+    if (appMode !== 'editor') return;
 
     const canvas = outerCanvasRef.current;
     if (!canvas) return;
@@ -902,7 +925,6 @@ const App = () => {
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     const contentW_cm = dims.width + 1;
-    // 內層高度需包含扣子 (如果是0就沒影響)
     const contentH_cm = dims.innerTotalHeight + dims.buttonTab.h + 1;
     canvas.width = contentW_cm * PREVIEW_PIXELS_PER_CM;
     canvas.height = contentH_cm * PREVIEW_PIXELS_PER_CM;
@@ -969,13 +991,15 @@ const App = () => {
             const p2TargetCenterY = pageHeight - p1BlockCenterAbsoluteY;
             const imageContentHeightMm = contentH_cm * 10;
             finalImageY = p2TargetCenterY - (imageContentHeightMm / 2);
-            finalImageY = finalImageY - 1;
-            x = x + 2;
+            
+            finalImageY = finalImageY - 1; // 垂直校正 (上移 1mm)
+            x = x + 2; // 水平校正 (右移 2mm)
         } else {
             const bodyInImageOffsetY = (pdfTotalH - (dims.innerTotalHeight * 10)) / 2;
             const targetBodyY = outerTopMargin + (dims.buttonTab.h * 10);
-            finalImageY = outerTopMargin; // 由於內層也有Tab或無Tab都對齊頂部
+            finalImageY = outerTopMargin;
         }
+        
         doc.addImage(imgData, 'JPEG', x, finalImageY, pdfTotalW, pdfTotalH);
     };
 
@@ -993,7 +1017,6 @@ const App = () => {
     }
   };
 
-  // --- 根據 appMode 顯示不同介面 ---
   if (appMode === 'setup') {
       return <SetupWizard onComplete={handleSetupComplete} />;
   }
@@ -1032,7 +1055,7 @@ const App = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 mb-12">
             <ImageEditorCard 
                 id="front" 
-                label="1. 正面" 
+                label="1. 正面 (頭對頭)" 
                 sub={`${dims.width} x ${dims.frontHeight} cm`} 
                 colorBadge="from-pink-400 to-rose-400"
                 imageState={images.front}
@@ -1044,7 +1067,7 @@ const App = () => {
             />
             <ImageEditorCard 
                 id="back" 
-                label="2. 背面" 
+                label="2. 背面 (主體)" 
                 sub={`${dims.width} x ${dims.backHeight} cm`} 
                 colorBadge="from-blue-400 to-cyan-400"
                 imageState={images.back}
@@ -1056,7 +1079,7 @@ const App = () => {
             />
             <ImageEditorCard 
                 id="pocket" 
-                label="3. 夾層" 
+                label="3. 夾層 (底對底)" 
                 sub={`${dims.width} x ${dims.pocketHeight} cm`} 
                 colorBadge="from-emerald-400 to-teal-400"
                 imageState={images.pocket}
@@ -1068,7 +1091,7 @@ const App = () => {
             />
             <ImageEditorCard 
                 id="inner" 
-                label="4. 內層" 
+                label="4. 內層 (襯紙)" 
                 sub={`${dims.width} x ${dims.innerTotalHeight} cm`} 
                 colorBadge="from-violet-400 to-purple-400"
                 imageState={images.inner}
@@ -1097,25 +1120,21 @@ const App = () => {
                 </div>
 
                 <div className="flex flex-col sm:flex-row items-center gap-4 w-full md:w-auto">
-                    {/* ibon Static Info */}
-                    <div 
-                        className="flex items-center gap-4 px-5 py-4 rounded-2xl border border-indigo-200 bg-indigo-50/50 w-full sm:w-auto"
-                    >
-                        <div className="w-10 h-10 flex items-center justify-center rounded-full bg-indigo-100 text-indigo-600">
-                            <Printer size={20} />
-                        </div>
-                        <div className="flex flex-col">
-                            <span className="font-bold text-sm text-indigo-900 flex items-center gap-2">
-                                已啟用 ibon 列印優化
-                                <Sparkles size={14} className="text-amber-500" />
-                            </span>
-                            <span className="text-xs text-indigo-700/70 mt-0.5">
-                                7-11列印選用彩色雙面列印+特殊用紙
-                            </span>
-                            <span className="text-[11px] text-rose-500 font-bold mt-1">
-                                ※ 如自行列印，請設定「長邊翻頁」
-                            </span>
-                        </div>
+                    <div className="flex bg-indigo-50 p-1 rounded-xl">
+                        <button 
+                            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all ${isIbonMode ? 'bg-white shadow-sm text-indigo-600 ring-1 ring-indigo-100' : 'text-slate-500 hover:text-slate-700'}`}
+                            onClick={() => setIsIbonMode(true)}
+                        >
+                            <Store size={16} />
+                            ibon 列印
+                        </button>
+                        <button 
+                            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all ${!isIbonMode ? 'bg-white shadow-sm text-indigo-600 ring-1 ring-indigo-100' : 'text-slate-500 hover:text-slate-700'}`}
+                            onClick={() => setIsIbonMode(false)}
+                        >
+                            <Printer size={16} />
+                            自行列印
+                        </button>
                     </div>
                     
                     <button 
@@ -1131,6 +1150,32 @@ const App = () => {
                         <span>下載完整 PDF</span>
                     </button>
                 </div>
+            </div>
+            
+            <div className="relative z-10 mt-4 text-center">
+                {isIbonMode ? (
+                    <span className="text-xs text-indigo-600 bg-white/50 px-3 py-1.5 rounded-full border border-indigo-100/50 flex flex-col md:flex-row items-center justify-center gap-1.5 w-fit mx-auto">
+                        <span className="flex items-center gap-1.5">
+                            <Sparkles size={12} className="text-amber-500" />
+                            已啟用 ibon 優化：內層自動旋轉 + 雙面偏移校正 (右2mm/上1mm)
+                        </span>
+                        <span className="text-rose-500 ml-1 font-bold flex items-center gap-1">
+                            <AlertTriangle size={12} />
+                            雙面列印多少有誤差，請以 page 1 的圖案為基準去剪裁。
+                        </span>
+                    </span>
+                ) : (
+                    <span className="text-xs text-slate-500 bg-white/50 px-3 py-1.5 rounded-full border border-slate-200/50 flex flex-col md:flex-row items-center justify-center gap-1.5 w-fit mx-auto">
+                        <span className="flex items-center gap-1.5">
+                            <Home size={12} />
+                            無偏移校正，適合單面列印或家用印表機
+                        </span>
+                        <span className="text-rose-500 ml-1 font-bold flex items-center gap-1">
+                            <AlertTriangle size={12} />
+                            雙面列印多少有誤差，請以 page 1 的圖案為基準去剪裁。
+                        </span>
+                    </span>
+                )}
             </div>
         </div>
 
