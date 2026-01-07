@@ -1055,7 +1055,7 @@ const App = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 mb-12">
             <ImageEditorCard 
                 id="front" 
-                label="1. 正面 (頭對頭)" 
+                label="1. 正面" 
                 sub={`${dims.width} x ${dims.frontHeight} cm`} 
                 colorBadge="from-pink-400 to-rose-400"
                 imageState={images.front}
@@ -1067,7 +1067,7 @@ const App = () => {
             />
             <ImageEditorCard 
                 id="back" 
-                label="2. 背面 (主體)" 
+                label="2. 背面" 
                 sub={`${dims.width} x ${dims.backHeight} cm`} 
                 colorBadge="from-blue-400 to-cyan-400"
                 imageState={images.back}
@@ -1079,7 +1079,7 @@ const App = () => {
             />
             <ImageEditorCard 
                 id="pocket" 
-                label="3. 夾層 (底對底)" 
+                label="3. 夾層" 
                 sub={`${dims.width} x ${dims.pocketHeight} cm`} 
                 colorBadge="from-emerald-400 to-teal-400"
                 imageState={images.pocket}
@@ -1091,7 +1091,7 @@ const App = () => {
             />
             <ImageEditorCard 
                 id="inner" 
-                label="4. 內層 (襯紙)" 
+                label="4. 內層" 
                 sub={`${dims.width} x ${dims.innerTotalHeight} cm`} 
                 colorBadge="from-violet-400 to-purple-400"
                 imageState={images.inner}
@@ -1157,7 +1157,7 @@ const App = () => {
                     <span className="text-xs text-indigo-600 bg-white/50 px-3 py-1.5 rounded-full border border-indigo-100/50 flex flex-col md:flex-row items-center justify-center gap-1.5 w-fit mx-auto">
                         <span className="flex items-center gap-1.5">
                             <Sparkles size={12} className="text-amber-500" />
-                            已啟用 ibon 優化：內層自動旋轉 + 雙面偏移校正 (右2mm/上1mm)
+                            使用ibon雲端列印須點選ibon列印方式，其他超商的雲端列印不在預設範圍
                         </span>
                         <span className="text-rose-500 ml-1 font-bold flex items-center gap-1">
                             <AlertTriangle size={12} />
@@ -1168,7 +1168,7 @@ const App = () => {
                     <span className="text-xs text-slate-500 bg-white/50 px-3 py-1.5 rounded-full border border-slate-200/50 flex flex-col md:flex-row items-center justify-center gap-1.5 w-fit mx-auto">
                         <span className="flex items-center gap-1.5">
                             <Home size={12} />
-                            無偏移校正，適合單面列印或家用印表機
+                            適合家用印表機
                         </span>
                         <span className="text-rose-500 ml-1 font-bold flex items-center gap-1">
                             <AlertTriangle size={12} />
@@ -1205,7 +1205,7 @@ const App = () => {
                     {isIbonMode ? (
                         <span className="flex items-center gap-1.5 text-xs font-bold text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-full border border-indigo-100">
                             <ArrowDown size={14} />
-                            已偏移校正
+                            ibon列印模式
                         </span>
                     ) : (
                         <span className="text-xs font-mono text-slate-400 bg-slate-50 px-2 py-1 rounded">{dims.width} x {dims.innerTotalHeight + dims.buttonTab.h} cm</span>
