@@ -25,7 +25,6 @@ const DEFAULT_DIMS = {
 // --- 多語言字典 ---
 const TRANSLATIONS = {
   'zh-TW': {
-    // Landing Page
     landing_title: '專為粉絲打造的應援神器',
     landing_subtitle: '不管是 ibon 還是全家，輕鬆自製專屬演唱會票夾，收藏每一份感動。',
     landing_start: '立即開始製作',
@@ -53,10 +52,7 @@ const TRANSLATIONS = {
     contact_email: '您的 Email',
     contact_msg: '想說的話...',
     contact_submit: '送出訊息',
-    
-    // Existing Translations
     title: '演唱會票夾 DIY 專業版',
-    // ... (保留既有翻譯)
     reset: '重設',
     mode: '模式',
     size_note: '註：尺寸有預留列印縮放的空間，所以會顯示偏大',
@@ -124,7 +120,6 @@ const TRANSLATIONS = {
     pdf_page2_normal: 'Page 2: Inner Layer',
   },
   'en': {
-    // Landing Page
     landing_title: 'Ultimate DIY Ticket Holder',
     landing_subtitle: 'Create unique fan items easily. Real-time preview, precise layout.',
     landing_start: 'Start Creating Now',
@@ -152,8 +147,6 @@ const TRANSLATIONS = {
     contact_email: 'Your Email',
     contact_msg: 'Message...',
     contact_submit: 'Send Message',
-
-    // Existing Translations
     title: 'Ticket Holder DIY Pro',
     reset: 'Reset',
     mode: 'Mode',
@@ -220,6 +213,7 @@ const TRANSLATIONS = {
     pdf_page1_text: 'Page 1: Outer Layer',
     pdf_page2_ibon: 'Page 2: Inner Layer (Mirrored & Calibrated for ibon)',
     pdf_page2_normal: 'Page 2: Inner Layer',
+    preview_3d: '3D Preview', 
   }
 };
 
@@ -254,7 +248,7 @@ const TICKET_DATA = [
 ];
 
 // --- 0. Landing Page ---
-const LandingPage = ({ onStart, t, lang, setLang }) => {
+const LandingPage = memo(({ onStart, t, lang, setLang }) => {
     
     const handleContact = (e) => {
         e.preventDefault();
@@ -308,7 +302,7 @@ const LandingPage = ({ onStart, t, lang, setLang }) => {
             </section>
 
             <section className="py-20 px-4 bg-white">
-                <div className="max-w-5xl mx-auto flex flex-col md:flex-row items-center gap-12">
+                <div className="max-w-5xl mx-auto flex flex-col md:flex-row items-center gap-16">
                     <div className="flex-1 space-y-6">
                         <div className="flex items-center gap-3 text-indigo-600 font-bold">
                             <Heart className="fill-indigo-600" /> OUR STORY
@@ -318,9 +312,25 @@ const LandingPage = ({ onStart, t, lang, setLang }) => {
                             {t('story_desc')}
                         </p>
                     </div>
-                    <div className="flex-1 bg-slate-100 rounded-3xl p-8 aspect-video flex items-center justify-center relative overflow-hidden group">
-                         <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1459749411177-3c925d69857f?q=80&w=2070&auto=format&fit=crop')] bg-cover bg-center opacity-80 group-hover:scale-105 transition-transform duration-700"></div>
-                         <div className="absolute inset-0 bg-indigo-900/20"></div>
+                    
+                    {/* 雙圖交疊展示區 */}
+                    <div className="flex-1 relative w-full h-[400px]">
+                         {/* Image 1: Back/Left - 模擬背景 */}
+                         <div className="absolute top-0 left-4 w-3/5 h-4/5 bg-slate-200 rounded-2xl shadow-xl overflow-hidden transform -rotate-6 hover:rotate-0 transition-all duration-500 z-10 border-4 border-white">
+                            <img 
+                                src="https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&w=800&q=80" 
+                                alt="Sample 1" 
+                                className="w-full h-full object-cover"
+                            />
+                         </div>
+                         {/* Image 2: Front/Right - 模擬前景 */}
+                         <div className="absolute bottom-0 right-4 w-3/5 h-4/5 bg-slate-200 rounded-2xl shadow-2xl overflow-hidden transform rotate-3 hover:rotate-0 transition-all duration-500 z-20 border-4 border-white">
+                            <img 
+                                src="https://images.unsplash.com/photo-1501281668745-f7f57925c3b4?auto=format&fit=crop&w=800&q=80" 
+                                alt="Sample 2" 
+                                className="w-full h-full object-cover"
+                            />
+                         </div>
                     </div>
                 </div>
             </section>
@@ -408,10 +418,10 @@ const LandingPage = ({ onStart, t, lang, setLang }) => {
             </footer>
         </div>
     );
-};
+});
 
 // --- 1. 設定精靈元件 ---
-const SetupWizard = ({ onComplete, t, lang, setLang }) => {
+const SetupWizard = memo(({ onComplete, t, lang, setLang }) => {
   const [step, setStep] = useState(1);
   const [ticketType, setTicketType] = useState('711'); 
   const [hasTab, setHasTab] = useState(true);
@@ -714,7 +724,7 @@ const SetupWizard = ({ onComplete, t, lang, setLang }) => {
       </div>
     </div>
   );
-};
+});
 
 // --- 2. 控制列元件 ---
 const ControlRow = memo(({ icon, label, val, min, max, step, onChange, isScale }) => {
@@ -904,13 +914,12 @@ const ImageEditorCard = memo(({
 // --- 4. 主應用程式 ---
 const App = () => {
   const [jsPDFLoaded, setJsPDFLoaded] = useState(false);
-  const [isIbonMode, setIsIbonMode] = useState(true); // Default to true
+  const [isIbonMode, setIsIbonMode] = useState(true); 
   
   const [appMode, setAppMode] = useState('landing');
   const [dims, setDims] = useState(DEFAULT_DIMS);
   const [hasTab, setHasTab] = useState(true);
   const [ticketTypeId, setTicketTypeId] = useState('711');
-  
   const [lang, setLang] = useState('zh-TW');
 
   // 計算實際是否啟用 ibon 模式 (英文模式下強制為 false)
@@ -1565,10 +1574,13 @@ const App = () => {
                             <Home size={12} />
                             {t('self_hint')}
                         </span>
-                        <span className="text-rose-500 ml-1 font-bold flex items-center gap-1">
-                            <AlertTriangle size={12} />
-                            {t('self_warn')}
-                        </span>
+                        {/* 英文模式下不顯示雙面列印警告，因為通常預設單面印 */}
+                        {lang === 'zh-TW' && (
+                            <span className="text-rose-500 ml-1 font-bold flex items-center gap-1">
+                                <AlertTriangle size={12} />
+                                {t('self_warn')}
+                            </span>
+                        )}
                     </span>
                 )}
             </div>
