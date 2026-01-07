@@ -192,7 +192,7 @@ const TICKET_DATA = [
 ];
 
 // --- 1. 設定精靈元件 ---
-const SetupWizard = ({ onComplete, t }) => {
+const SetupWizard = ({ onComplete, t, lang, setLang }) => {
   const [step, setStep] = useState(1);
   const [ticketType, setTicketType] = useState('711'); 
   const [hasTab, setHasTab] = useState(true);
@@ -203,14 +203,26 @@ const SetupWizard = ({ onComplete, t }) => {
   const [customError, setCustomError] = useState('');
   const [tabWarning, setTabWarning] = useState('');
 
-  // 取得翻譯後的選項
+  // 取得翻譯後的選項 (根據語言過濾)
   const getTicketOptions = () => {
-      return TICKET_DATA.map(opt => ({
+      // 英文模式下只保留自訂尺寸
+      const options = lang === 'en' 
+        ? TICKET_DATA.filter(opt => opt.id === 'custom')
+        : TICKET_DATA;
+        
+      return options.map(opt => ({
           ...opt,
           name: t(`ticket_${opt.id}`),
           desc: t(`ticket_${opt.id}_desc`)
       }));
   };
+
+  // 當語言切換為英文時，自動切換到 Custom，避免停留在隱藏的選項上
+  useEffect(() => {
+      if (lang === 'en') {
+          setTicketType('custom');
+      }
+  }, [lang]);
 
   useEffect(() => {
     if (step === 1.5) {
@@ -303,6 +315,17 @@ const SetupWizard = ({ onComplete, t }) => {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+      {/* 語言切換按鈕 (在 Wizard 中也要顯示) */}
+      <div className="absolute top-4 right-4 z-50">
+        <button 
+            onClick={() => setLang(lang === 'zh-TW' ? 'en' : 'zh-TW')}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-white/80 backdrop-blur-sm border border-slate-200 rounded-full shadow-sm hover:bg-white text-sm font-medium text-slate-600 transition-all"
+        >
+            <Globe size={16} />
+            {lang === 'zh-TW' ? 'English' : '繁體中文'}
+        </button>
+      </div>
+
       <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col transition-all">
         <div className="bg-indigo-600 p-6 text-white text-center relative overflow-hidden">
             <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-2xl -translate-y-1/2 translate-x-1/2"></div>
@@ -1150,7 +1173,7 @@ const App = () => {
   };
 
   if (appMode === 'setup') {
-      return <SetupWizard onComplete={handleSetupComplete} t={t} />;
+      return <SetupWizard onComplete={handleSetupComplete} t={t} lang={lang} setLang={setLang} />;
   }
 
   return (
