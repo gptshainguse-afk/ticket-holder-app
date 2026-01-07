@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, memo } from 'react';
-import { Upload, Trash2, Scissors, Move, ZoomIn, FileText, Layers, Printer, Check, ArrowDown, Sparkles, Settings, ChevronRight, Store, CreditCard, PenTool, ToggleLeft, ToggleRight, Image as ImageIcon, Ruler, AlertCircle, Home, AlertTriangle } from 'lucide-react';
+import { Upload, Trash2, Scissors, Move, ZoomIn, FileText, Layers, Printer, Check, ArrowDown, Sparkles, Settings, ChevronRight, Store, CreditCard, PenTool, ToggleLeft, ToggleRight, Image as ImageIcon, Ruler, AlertCircle, Home, AlertTriangle, Globe } from 'lucide-react';
 
 // 注意：在標準 npm 開發環境中，您可以使用 npm install jspdf 並取消下行註解
 // import { jsPDF } from 'jspdf';
@@ -19,27 +19,162 @@ const DEFAULT_DIMS = {
   hole: { w: 0.8, h: 0.3, margin: 0.5 }
 };
 
-// 定義票券選項
-// 注意：這裡雖然引用了 DEFAULT_DIMS，但在 SetupWizard 中我們會確保深層複製，避免修改到原始值
-const TICKET_OPTIONS = [
+// --- 多語言字典 ---
+const TRANSLATIONS = {
+  'zh-TW': {
+    title: '演唱會票夾 DIY 專業版',
+    subtitle: '打造獨一無二的應援小物 • 即時預覽裁切 • 精準對位輸出',
+    reset: '重設',
+    mode: '模式',
+    size_note: '註：尺寸有預留列印縮放的空間，所以會顯示偏大',
+    step1_title: '選擇票券類型',
+    step1_desc: '依照您的超商票券選擇版型',
+    step1_5_title: '輸入票券尺寸',
+    step1_5_desc: '請測量您手中的票券實際長寬',
+    step2_title: '卡扣設定',
+    step2_desc: '選擇是否製作上方扣子',
+    next: '下一步',
+    prev: '上一步',
+    start: '開始製作',
+    custom_length: '票券長度 (cm)',
+    custom_width: '票券寬度 (cm)',
+    custom_width_desc: '對應票夾的上下高度',
+    custom_length_desc: '對應票夾的左右寬度',
+    err_width_max: '票券寬度不可大於 8.5cm。',
+    err_length_max: '票券長度不可大於 27cm，否則將超出 A4 紙張範圍。',
+    err_height_max: '計算後的票夾展開高度過大，將超出 A4 紙張範圍。',
+    warn_tab_forced: '因尺寸接近 A4 極限，已強制關閉卡扣功能 (將厚度加回正面)。',
+    tab_enable: '製作卡扣',
+    tab_enable_desc: '上方會有一個小梯形凸起，並在夾層打孔，可將票夾扣上防止票券掉出。',
+    tab_disable: '不做卡扣',
+    tab_disable_desc: '移除上方凸起，並將該長度(0.5cm)直接加回正面主體，外觀為平整的長方形。',
+    scale: '縮放大小',
+    move_x: '水平移動',
+    move_y: '垂直移動',
+    click_upload: '點擊上傳圖片',
+    support_fmt: '支援 JPG, PNG',
+    front: '1. 正面 (頭對頭)',
+    back: '2. 背面 (主體)',
+    pocket: '3. 夾層 (底對底)',
+    inner: '4. 內層 (襯紙)',
+    output_setting: '輸出設定與下載',
+    output_desc: '我們會生成一份包含兩頁的 A4 PDF 檔案。請根據您的列印需求選擇模式，確保雙面列印時圖案能完美對齊。',
+    ibon_mode: 'ibon 列印',
+    self_mode: '自行列印',
+    ibon_hint: '已啟用 ibon 優化：內層自動旋轉 + 雙面偏移校正 (右2mm/上1mm)',
+    self_hint: '無偏移校正，適合單面列印或家用印表機',
+    self_warn: '雙面列印多少有誤差，請以 page 1 的圖案為基準去剪裁。',
+    download_pdf: '下載完整 PDF',
+    footer: 'Designed for DIY Fans • 建議使用 160磅以上紙張列印',
+    page1: '頁面 1：外殼 (背面+耳朵)',
+    page2: '頁面 2：內層',
+    page2_tab: '(襯紙+扣子)',
+    page2_no_tab: '(無扣子)',
+    calibrated: '已偏移校正',
+    rotate_msg: '輸出時將自動旋轉 180°',
+    pdf_loading: '載入中...',
+    ticket_711: '7-Eleven',
+    ticket_711_desc: '標準尺寸 (23cm)',
+    ticket_family: '全家 FamilyMart',
+    ticket_family_desc: '短版尺寸 (20cm)',
+    ticket_hilife: '萊爾富 / OK',
+    ticket_hilife_desc: '特規尺寸 (正面8.5/背面9)',
+    ticket_custom: '自訂尺寸',
+    ticket_custom_desc: '輸入票券長寬自動計算',
+    paste_area: '黏貼處',
+    rotate_needed: '需旋轉',
+    front_back: '正面/背面',
+    inner_with_tab: '內層圖 (含扣子)',
+    inner_no_tab: '內層圖 (無扣子)',
+    pdf_page1_text: 'Page 1: Outer Layer',
+    pdf_page2_ibon: 'Page 2: Inner Layer (Mirrored & Calibrated for ibon)',
+    pdf_page2_normal: 'Page 2: Inner Layer',
+  },
+  'en': {
+    title: 'Ticket Holder DIY Pro',
+    subtitle: 'Create unique fan support items • Real-time preview • Precise layout',
+    reset: 'Reset',
+    mode: 'Mode',
+    size_note: 'Note: Sizes include print margins, so they appear larger.',
+    step1_title: 'Select Ticket Type',
+    step1_desc: 'Choose a template based on your ticket store',
+    step1_5_title: 'Enter Dimensions',
+    step1_5_desc: 'Measure your ticket actual length and width',
+    step2_title: 'Clasp Settings',
+    step2_desc: 'Choose whether to create a top clasp tab',
+    next: 'Next',
+    prev: 'Back',
+    start: 'Start',
+    custom_length: 'Ticket Length (cm)',
+    custom_width: 'Ticket Width (cm)',
+    custom_width_desc: 'Corresponds to holder height',
+    custom_length_desc: 'Corresponds to holder width',
+    err_width_max: 'Ticket width cannot exceed 8.5cm.',
+    err_length_max: 'Ticket length cannot exceed 27cm (A4 limit).',
+    err_height_max: 'Calculated holder height is too large for A4 paper.',
+    warn_tab_forced: 'Clasp forced off due to size limits (thickness added to front).',
+    tab_enable: 'With Clasp',
+    tab_enable_desc: 'Adds a trapezoidal tab and a hole in the pocket to secure the ticket.',
+    tab_disable: 'No Clasp',
+    tab_disable_desc: 'Removes the top tab. The length (0.5cm) is added to the front body.',
+    scale: 'Scale',
+    move_x: 'Move X',
+    move_y: 'Move Y',
+    click_upload: 'Click to Upload',
+    support_fmt: 'Supports JPG, PNG',
+    front: '1. Front (Head-to-Head)',
+    back: '2. Back (Main Body)',
+    pocket: '3. Pocket (Tail-to-Tail)',
+    inner: '4. Inner (Liner)',
+    output_setting: 'Output & Download',
+    output_desc: 'Generates a 2-page A4 PDF. Choose a mode for double-sided alignment.',
+    ibon_mode: 'ibon Print',
+    self_mode: 'Self Print',
+    ibon_hint: 'ibon Optimized: Inner layer rotated + Offset fixed (R 2mm/U 1mm)',
+    self_hint: 'No offset correction. Good for single-sided or home printers.',
+    self_warn: 'Double-sided printing has errors. Use Page 1 as the cutting guide.',
+    download_pdf: 'Download PDF',
+    footer: 'Designed for DIY Fans • 160gsm+ paper recommended',
+    page1: 'Page 1: Outer Shell (Back+Ears)',
+    page2: 'Page 2: Inner Layer',
+    page2_tab: '(Liner+Tab)',
+    page2_no_tab: '(No Tab)',
+    calibrated: 'Calibrated',
+    rotate_msg: 'Auto-rotated 180° in output',
+    pdf_loading: 'Loading...',
+    ticket_711: '7-Eleven',
+    ticket_711_desc: 'Standard (23cm)',
+    ticket_family: 'FamilyMart',
+    ticket_family_desc: 'Short (20cm)',
+    ticket_hilife: 'Hi-Life / OK',
+    ticket_hilife_desc: 'Special (F 8.5/B 9)',
+    ticket_custom: 'Custom Size',
+    ticket_custom_desc: 'Auto-calc from ticket dims',
+    paste_area: 'Glue',
+    rotate_needed: 'Rotate',
+    front_back: 'Front/Back',
+    inner_with_tab: 'Inner (With Tab)',
+    inner_no_tab: 'Inner (No Tab)',
+    pdf_page1_text: 'Page 1: Outer Layer',
+    pdf_page2_ibon: 'Page 2: Inner Layer (Mirrored & Calibrated for ibon)',
+    pdf_page2_normal: 'Page 2: Inner Layer',
+  }
+};
+
+// 票券選項資料 (靜態ID與預設值)
+const TICKET_DATA = [
     { 
       id: '711', 
-      name: '7-Eleven', 
-      desc: '標準尺寸 (23cm)', 
       color: 'bg-green-600',
       dims: { ...DEFAULT_DIMS, width: 23 } 
     },
     { 
       id: 'family', 
-      name: '全家 FamilyMart', 
-      desc: '短版尺寸 (20cm)', 
       color: 'bg-blue-500',
       dims: { ...DEFAULT_DIMS, width: 20 }
     },
     { 
       id: 'hilife', 
-      name: '萊爾富 / OK', 
-      desc: '特規尺寸 (正面8.5/背面9)', 
       color: 'bg-rose-500',
       dims: { 
         ...DEFAULT_DIMS, 
@@ -51,15 +186,13 @@ const TICKET_OPTIONS = [
     },
     { 
         id: 'custom',
-        name: '自訂尺寸',
-        desc: '輸入票券長寬自動計算',
         color: 'bg-slate-500',
         dims: null 
     }
 ];
 
 // --- 1. 設定精靈元件 ---
-const SetupWizard = ({ onComplete }) => {
+const SetupWizard = ({ onComplete, t }) => {
   const [step, setStep] = useState(1);
   const [ticketType, setTicketType] = useState('711'); 
   const [hasTab, setHasTab] = useState(true);
@@ -70,10 +203,17 @@ const SetupWizard = ({ onComplete }) => {
   const [customError, setCustomError] = useState('');
   const [tabWarning, setTabWarning] = useState('');
 
-  // 驗證自訂尺寸與卡扣邏輯
+  // 取得翻譯後的選項
+  const getTicketOptions = () => {
+      return TICKET_DATA.map(opt => ({
+          ...opt,
+          name: t(`ticket_${opt.id}`),
+          desc: t(`ticket_${opt.id}_desc`)
+      }));
+  };
+
   useEffect(() => {
     if (step === 1.5) {
-      // 1. 計算預計的正面與背面高度
       const w = parseFloat(customWidth);
       
       let calcFrontHeight;
@@ -89,27 +229,17 @@ const SetupWizard = ({ onComplete }) => {
 
       const totalBodyHeight = calcFrontHeight + calcBackHeight;
 
-      // 2. 重置狀態
       let errorMsg = '';
       let warningMsg = '';
 
-      // 3. 檢查長度
       if (customLength > 27) {
-        errorMsg = '票券長度不可大於 27cm，否則將超出 A4 紙張範圍。';
-      }
-      // 4. 檢查寬度
-      else if (w > 8.5) {
-        errorMsg = '票券寬度不可大於 8.5cm。';
-      }
-      
-      // 5. 檢查總高度 (A4 高度限制)
-      else if (totalBodyHeight > 17.5) {
-        errorMsg = `計算後的票夾展開高度過大 (${totalBodyHeight.toFixed(1)} + 3.5 > 21)，將超出 A4 紙張範圍。`;
-      } 
-      
-      // 6. 檢查卡扣限制
-      else if (totalBodyHeight > 17) {
-        warningMsg = '因尺寸接近 A4 極限，已強制關閉卡扣功能 (將厚度加回正面)。';
+        errorMsg = t('err_length_max');
+      } else if (w > 8.5) {
+        errorMsg = t('err_width_max');
+      } else if (totalBodyHeight > 17.5) {
+        errorMsg = t('err_height_max');
+      } else if (totalBodyHeight > 17) {
+        warningMsg = t('warn_tab_forced');
         if (hasTab) setHasTab(false); 
       } else {
         if (warningMsg === '') setTabWarning('');
@@ -118,7 +248,7 @@ const SetupWizard = ({ onComplete }) => {
       setCustomError(errorMsg);
       setTabWarning(warningMsg);
     }
-  }, [customWidth, customLength, step, hasTab]);
+  }, [customWidth, customLength, step, hasTab, t]);
 
   const handleNext = () => {
     if (step === 1) {
@@ -135,10 +265,8 @@ const SetupWizard = ({ onComplete }) => {
 
       if (ticketType === 'custom') {
           const w = parseFloat(customWidth);
-          // 1. 票夾寬度
           const calcWidth = Math.ceil((parseFloat(customLength) + 1) / 0.96);
           
-          // 2. 票夾高度計算
           let calcFrontHeight;
           if (w > 8) {
               calcFrontHeight = 8.5;
@@ -152,7 +280,6 @@ const SetupWizard = ({ onComplete }) => {
 
           const calcInnerHeight = calcFrontHeight + calcBackHeight;
 
-          // 修正：使用 JSON parse/stringify 進行深層複製，避免汙染 DEFAULT_DIMS
           finalDims = {
               ...JSON.parse(JSON.stringify(DEFAULT_DIMS)),
               width: calcWidth,
@@ -161,8 +288,7 @@ const SetupWizard = ({ onComplete }) => {
               innerTotalHeight: Number(calcInnerHeight.toFixed(2))
           };
       } else {
-          const selectedOption = TICKET_OPTIONS.find(t => t.id === ticketType);
-          // 這裡已經有深層複製，是安全的
+          const selectedOption = TICKET_DATA.find(t => t.id === ticketType);
           finalDims = JSON.parse(JSON.stringify(selectedOption.dims));
       }
 
@@ -182,26 +308,26 @@ const SetupWizard = ({ onComplete }) => {
             <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-2xl -translate-y-1/2 translate-x-1/2"></div>
             <h2 className="text-2xl font-bold flex items-center justify-center gap-2 relative z-10">
                 {step === 1.5 ? <Ruler size={24} /> : <Settings size={24} />}
-                {step === 1 && '歡迎使用演唱會門票票夾DIY幫手'}
-                {step === 1.5 && '輸入票券尺寸'}
-                {step === 2 && '卡扣設定'}
+                {step === 1 && t('step1_title')}
+                {step === 1.5 && t('step1_5_title')}
+                {step === 2 && t('step2_title')}
             </h2>
             <p className="text-indigo-200 text-sm mt-1 relative z-10">
-                {step === 1 && '請根據您票券領取的超商選擇以下選項，如果只是小白單請選自訂尺寸'}
-                {step === 1.5 && '請測量您手中的票券實際長寬'}
-                {step === 2 && '選擇是否製作上方扣子'}
+                {step === 1 && t('step1_desc')}
+                {step === 1.5 && t('step1_5_desc')}
+                {step === 2 && t('step2_desc')}
             </p>
         </div>
 
         <div className="p-6 md:p-8">
             {step === 1 ? (
                 <div className="grid grid-cols-1 gap-3">
-                    {TICKET_OPTIONS.map((opt) => (
+                    {getTicketOptions().map((opt) => (
                         <div 
                             key={opt.id}
                             onClick={() => {
                                 setTicketType(opt.id);
-                                setHasTab(true); // 切換類型時重置卡扣選項
+                                setHasTab(true); 
                             }}
                             className={`
                                 cursor-pointer flex items-center p-4 rounded-xl border-2 transition-all duration-200
@@ -225,7 +351,7 @@ const SetupWizard = ({ onComplete }) => {
                 <div className="space-y-6">
                     <div className="space-y-4">
                         <div>
-                            <label className="block text-sm font-bold text-slate-700 mb-1">票券長度 (cm)</label>
+                            <label className="block text-sm font-bold text-slate-700 mb-1">{t('custom_length')}</label>
                             <div className="relative">
                                 <input 
                                     type="number" 
@@ -233,15 +359,15 @@ const SetupWizard = ({ onComplete }) => {
                                     value={customLength}
                                     onChange={(e) => setCustomLength(e.target.value)}
                                     className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-indigo-500 focus:ring-0 outline-none text-lg font-mono text-slate-800"
-                                    placeholder="例如：15"
+                                    placeholder="15"
                                 />
                                 <span className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm">cm</span>
                             </div>
-                            <p className="text-xs text-slate-400 mt-1">對應票夾的左右寬度</p>
+                            <p className="text-xs text-slate-400 mt-1">{t('custom_length_desc')}</p>
                         </div>
 
                         <div>
-                            <label className="block text-sm font-bold text-slate-700 mb-1">票券寬度 (cm)</label>
+                            <label className="block text-sm font-bold text-slate-700 mb-1">{t('custom_width')}</label>
                             <div className="relative">
                                 <input 
                                     type="number" 
@@ -251,11 +377,11 @@ const SetupWizard = ({ onComplete }) => {
                                     className={`w-full px-4 py-3 border-2 rounded-xl focus:ring-0 outline-none text-lg font-mono 
                                         ${customError ? 'border-red-300 bg-red-50 text-red-900 focus:border-red-500' : 'border-slate-200 text-slate-800 focus:border-indigo-500'}
                                     `}
-                                    placeholder="例如：6"
+                                    placeholder="6"
                                 />
                                 <span className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm">cm</span>
                             </div>
-                            <p className="text-xs text-slate-400 mt-1">對應票夾的上下高度</p>
+                            <p className="text-xs text-slate-400 mt-1">{t('custom_width_desc')}</p>
                             
                             {customError && (
                                 <div className="flex items-start gap-2 mt-2 text-red-600 text-xs font-bold animate-pulse">
@@ -264,7 +390,6 @@ const SetupWizard = ({ onComplete }) => {
                                 </div>
                             )}
                             
-                            {/* 顯示卡扣警告訊息 (在 Step 1.5 預覽) */}
                             {!customError && tabWarning && (
                                 <div className="flex items-start gap-2 mt-2 text-amber-600 text-xs font-bold bg-amber-50 p-2 rounded-lg border border-amber-200">
                                     <AlertTriangle size={14} className="mt-0.5 shrink-0" />
@@ -283,12 +408,12 @@ const SetupWizard = ({ onComplete }) => {
                         <div className="flex justify-between items-center mb-2">
                             <span className="font-bold text-slate-800 flex items-center gap-2">
                                 <ToggleRight className="text-indigo-600" size={24} /> 
-                                製作卡扣
+                                {t('tab_enable')}
                             </span>
                             {hasTab && <Check className="text-indigo-600" size={20} />}
                         </div>
                         <p className="text-sm text-slate-500 ml-8">
-                            上方會有一個小梯形凸起，並在夾層打孔，可將票夾扣上防止票券掉出。
+                            {t('tab_enable_desc')}
                         </p>
                     </div>
 
@@ -299,16 +424,15 @@ const SetupWizard = ({ onComplete }) => {
                         <div className="flex justify-between items-center mb-2">
                             <span className="font-bold text-slate-800 flex items-center gap-2">
                                 <ToggleLeft className="text-slate-400" size={24} /> 
-                                不做卡扣
+                                {t('tab_disable')}
                             </span>
                             {!hasTab && <Check className="text-indigo-600" size={20} />}
                         </div>
                         <p className="text-sm text-slate-500 ml-8">
-                            移除上方凸起，並將該長度(0.5cm)直接加回正面主體，外觀為平整的長方形。
+                            {t('tab_disable_desc')}
                         </p>
                     </div>
                     
-                    {/* 卡扣頁面再次提醒 */}
                     {tabWarning && (
                         <div className="flex items-center justify-center gap-2 text-amber-600 text-xs font-bold bg-amber-50 p-2 rounded-lg border border-amber-200">
                             <AlertTriangle size={14} />
@@ -331,7 +455,7 @@ const SetupWizard = ({ onComplete }) => {
                     }}
                     className="px-6 py-2 rounded-lg text-slate-500 hover:bg-slate-200 transition-colors font-medium"
                 >
-                    上一步
+                    {t('prev')}
                 </button>
             ) : (
                 <div></div>
@@ -345,7 +469,7 @@ const SetupWizard = ({ onComplete }) => {
                         : 'bg-indigo-600 text-white hover:bg-indigo-700 active:scale-95 shadow-indigo-200'}
                 `}
             >
-                {step === 2 ? '開始製作' : '下一步'}
+                {step === 2 ? t('start') : t('next')}
                 <ChevronRight size={18} />
             </button>
         </div>
@@ -399,7 +523,8 @@ const ImageEditorCard = memo(({
   id, label, sub, colorBadge, 
   imageState, 
   widthCm, heightCm, 
-  onUpload, onUpdate, onRemove 
+  onUpload, onUpdate, onRemove,
+  t 
 }) => {
   const canvasRef = useRef(null);
 
@@ -499,8 +624,8 @@ const ImageEditorCard = memo(({
                 <ImageIcon size={24} />
               </div>
               <div className="text-center">
-                <span className="text-sm font-bold block">點擊上傳圖片</span>
-                <span className="text-xs opacity-70">支援 JPG, PNG</span>
+                <span className="text-sm font-bold block">{t('click_upload')}</span>
+                <span className="text-xs opacity-70">{t('support_fmt')}</span>
               </div>
               <input type="file" accept="image/*" className="hidden" onChange={handleUploadChange} />
             </label>
@@ -511,7 +636,7 @@ const ImageEditorCard = memo(({
           <div className="flex flex-col gap-3 bg-white rounded-xl border border-slate-100 p-3 shadow-inner mt-auto animate-in fade-in slide-in-from-bottom-2 duration-300">
               <ControlRow 
                   icon={<ZoomIn size={14}/>} 
-                  label="縮放大小" 
+                  label={t('scale')} 
                   val={imageState.scale} 
                   min={0.1} max={3} step={0.01}
                   onChange={handleScaleChange}
@@ -519,14 +644,14 @@ const ImageEditorCard = memo(({
               />
               <ControlRow 
                   icon={<Move size={14}/>} 
-                  label="水平移動" 
+                  label={t('move_x')}
                   val={imageState.x} 
                   min={-400} max={400} step={1}
                   onChange={handleXChange}
               />
               <ControlRow 
                   icon={<Move size={14} className="rotate-90"/>} 
-                  label="垂直移動" 
+                  label={t('move_y')}
                   val={imageState.y} 
                   min={-400} max={400} step={1}
                   onChange={handleYChange}
@@ -541,12 +666,19 @@ const ImageEditorCard = memo(({
 // --- 4. 主應用程式 ---
 const App = () => {
   const [jsPDFLoaded, setJsPDFLoaded] = useState(false);
-  const [isIbonMode, setIsIbonMode] = useState(true); // Default to true
+  const [isIbonMode, setIsIbonMode] = useState(true); 
   
   const [appMode, setAppMode] = useState('setup');
   const [dims, setDims] = useState(DEFAULT_DIMS);
   const [hasTab, setHasTab] = useState(true);
   const [ticketTypeId, setTicketTypeId] = useState('711');
+  
+  const [lang, setLang] = useState('zh-TW');
+
+  // i18n helper
+  const t = useCallback((key) => {
+      return TRANSLATIONS[lang][key] || key;
+  }, [lang]);
 
   useEffect(() => {
     if (window.jspdf) {
@@ -673,7 +805,7 @@ const App = () => {
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             ctx.font = `bold ${cm(0.4)}px sans-serif`;
-            ctx.fillText(rotate ? '需旋轉' : '正面/背面', 0, 0);
+            ctx.fillText(rotate ? t('rotate_needed') : t('front_back'), 0, 0);
         }
         ctx.restore();
     };
@@ -743,7 +875,7 @@ const App = () => {
             ctx.translate(contentW + earW/2, y - earH/2);
             ctx.rotate(Math.PI/2);
         }
-        ctx.fillText('黏貼處', 0, 0);
+        ctx.fillText(t('paste_area'), 0, 0);
         ctx.restore();
     };
 
@@ -819,7 +951,7 @@ const App = () => {
     ctx.stroke();
     ctx.restore();
 
-  }, [images, dims, hasTab]);
+  }, [images, dims, hasTab, t]);
 
   const drawInnerLayer = useCallback((ctx, width, height, scaleFactor) => {
     const cm = (val) => val * scaleFactor;
@@ -890,7 +1022,7 @@ const App = () => {
         ctx.textBaseline = 'middle';
         ctx.translate(contentW / 2, bodyH / 2);
         ctx.font = `bold ${cm(0.4)}px sans-serif`;
-        ctx.fillText(hasTab ? '內層圖 (含扣子)' : '內層圖 (無扣子)', 0, 0);
+        ctx.fillText(hasTab ? t('inner_with_tab') : t('inner_no_tab'), 0, 0);
     }
     ctx.restore();
 
@@ -902,7 +1034,7 @@ const App = () => {
 
     ctx.restore();
 
-  }, [images, dims, hasTab]);
+  }, [images, dims, hasTab, t]);
 
   useEffect(() => {
     if (appMode !== 'editor') return;
@@ -1005,49 +1137,60 @@ const App = () => {
 
     if (mode === 'combined') {
         processOuter();
-        doc.text("Page 1: Outer Layer", 10, 10);
+        doc.text(t('pdf_page1_text'), 10, 10);
         doc.addPage();
         processInner();
         if (isIbonMode) {
-            doc.text("Page 2: Inner Layer (Mirrored & Calibrated for ibon)", 10, 10);
+            doc.text(t('pdf_page2_ibon'), 10, 10);
         } else {
-            doc.text("Page 2: Inner Layer", 10, 10);
+            doc.text(t('pdf_page2_normal'), 10, 10);
         }
         doc.save('ticket-holder-complete.pdf');
     }
   };
 
   if (appMode === 'setup') {
-      return <SetupWizard onComplete={handleSetupComplete} />;
+      return <SetupWizard onComplete={handleSetupComplete} t={t} />;
   }
 
   return (
     <div className="min-h-screen font-sans text-slate-800">
       <div className="max-w-7xl mx-auto px-4 py-8 md:px-8">
+        {/* Language Switcher */}
+        <div className="absolute top-4 right-4 z-50">
+            <button 
+                onClick={() => setLang(lang === 'zh-TW' ? 'en' : 'zh-TW')}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-white/80 backdrop-blur-sm border border-slate-200 rounded-full shadow-sm hover:bg-white text-sm font-medium text-slate-600 transition-all"
+            >
+                <Globe size={16} />
+                {lang === 'zh-TW' ? 'English' : '繁體中文'}
+            </button>
+        </div>
+
         <header className="mb-10 text-center flex flex-col items-center">
           <div className="bg-white p-4 rounded-full shadow-lg mb-4 ring-4 ring-indigo-50">
             <Scissors className="w-10 h-10 text-indigo-600" />
           </div>
           <h1 className="text-4xl md:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-violet-600 tracking-tight">
-            演唱會票夾 DIY 小助手
+            {t('title')}
           </h1>
           
           <div className="mt-4 flex flex-col items-center justify-center gap-1">
             <div className="flex items-center gap-2 text-slate-600 font-bold text-lg">
                 <CreditCard size={20} className="text-indigo-500" /> 
-                <span>模式：{TICKET_OPTIONS.find(t => t.id === ticketTypeId)?.name || '自訂尺寸'}</span>
+                <span>{t('mode')}：{TICKET_DATA.find(t_opt => t_opt.id === ticketTypeId) ? t(`ticket_${ticketTypeId}`) : t('ticket_custom')}</span>
                 <span className="text-sm font-normal text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">
-                    {hasTab ? '含卡扣' : '無卡扣'}
+                    {hasTab ? t('tab_enable') : t('tab_disable')}
                 </span>
                 <button 
                     onClick={() => setAppMode('setup')}
                     className="ml-2 text-xs bg-slate-200 hover:bg-indigo-100 hover:text-indigo-600 px-3 py-1.5 rounded-md text-slate-500 flex items-center gap-1 transition-all"
                 >
-                    <Settings size={12} /> 重設
+                    <Settings size={12} /> {t('reset')}
                 </button>
             </div>
             <span className="text-xs text-slate-400 mt-1 bg-slate-50 px-3 py-1 rounded-full border border-slate-100">
-                註：尺寸有預留列印縮放的空間，所以會顯示偏大
+                {t('size_note')}
             </span>
           </div>
         </header>
@@ -1055,7 +1198,7 @@ const App = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 mb-12">
             <ImageEditorCard 
                 id="front" 
-                label="1. 正面" 
+                label={t('front')} 
                 sub={`${dims.width} x ${dims.frontHeight} cm`} 
                 colorBadge="from-pink-400 to-rose-400"
                 imageState={images.front}
@@ -1064,10 +1207,11 @@ const App = () => {
                 onUpload={handleImageUpload}
                 onUpdate={updateImageSettings}
                 onRemove={removeImage}
+                t={t}
             />
             <ImageEditorCard 
                 id="back" 
-                label="2. 背面" 
+                label={t('back')} 
                 sub={`${dims.width} x ${dims.backHeight} cm`} 
                 colorBadge="from-blue-400 to-cyan-400"
                 imageState={images.back}
@@ -1076,10 +1220,11 @@ const App = () => {
                 onUpload={handleImageUpload}
                 onUpdate={updateImageSettings}
                 onRemove={removeImage}
+                t={t}
             />
             <ImageEditorCard 
                 id="pocket" 
-                label="3. 夾層" 
+                label={t('pocket')} 
                 sub={`${dims.width} x ${dims.pocketHeight} cm`} 
                 colorBadge="from-emerald-400 to-teal-400"
                 imageState={images.pocket}
@@ -1088,10 +1233,11 @@ const App = () => {
                 onUpload={handleImageUpload}
                 onUpdate={updateImageSettings}
                 onRemove={removeImage}
+                t={t}
             />
             <ImageEditorCard 
                 id="inner" 
-                label="4. 內層" 
+                label={t('inner')} 
                 sub={`${dims.width} x ${dims.innerTotalHeight} cm`} 
                 colorBadge="from-violet-400 to-purple-400"
                 imageState={images.inner}
@@ -1100,6 +1246,7 @@ const App = () => {
                 onUpload={handleImageUpload}
                 onUpdate={updateImageSettings}
                 onRemove={removeImage}
+                t={t}
             />
         </div>
 
@@ -1112,10 +1259,10 @@ const App = () => {
                         <div className="p-2 bg-indigo-100 rounded-lg text-indigo-600">
                             <Layers size={24} />
                         </div>
-                        輸出設定與下載
+                        {t('output_setting')}
                     </h2>
                     <p className="text-slate-500 mt-2 leading-relaxed">
-                        我們會生成一份包含兩頁的 A4 PDF 檔案。請根據您的列印需求選擇模式，確保雙面列印時圖案能完美對齊。
+                        {t('output_desc')}
                     </p>
                 </div>
 
@@ -1126,14 +1273,14 @@ const App = () => {
                             onClick={() => setIsIbonMode(true)}
                         >
                             <Store size={16} />
-                            ibon 列印
+                            {t('ibon_mode')}
                         </button>
                         <button 
                             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all ${!isIbonMode ? 'bg-white shadow-sm text-indigo-600 ring-1 ring-indigo-100' : 'text-slate-500 hover:text-slate-700'}`}
                             onClick={() => setIsIbonMode(false)}
                         >
                             <Printer size={16} />
-                            自行列印
+                            {t('self_mode')}
                         </button>
                     </div>
                     
@@ -1147,7 +1294,7 @@ const App = () => {
                         `}
                     >
                         <FileText size={20} /> 
-                        <span>下載完整 PDF</span>
+                        <span>{t('download_pdf')}</span>
                     </button>
                 </div>
             </div>
@@ -1157,22 +1304,22 @@ const App = () => {
                     <span className="text-xs text-indigo-600 bg-white/50 px-3 py-1.5 rounded-full border border-indigo-100/50 flex flex-col md:flex-row items-center justify-center gap-1.5 w-fit mx-auto">
                         <span className="flex items-center gap-1.5">
                             <Sparkles size={12} className="text-amber-500" />
-                            使用ibon雲端列印須點選ibon列印方式，其他超商的雲端列印不在預設範圍
+                            {t('ibon_hint')}
                         </span>
                         <span className="text-rose-500 ml-1 font-bold flex items-center gap-1">
                             <AlertTriangle size={12} />
-                            雙面列印多少有誤差，請以 page 1 的圖案為基準去剪裁。
+                            {t('self_warn')}
                         </span>
                     </span>
                 ) : (
                     <span className="text-xs text-slate-500 bg-white/50 px-3 py-1.5 rounded-full border border-slate-200/50 flex flex-col md:flex-row items-center justify-center gap-1.5 w-fit mx-auto">
                         <span className="flex items-center gap-1.5">
                             <Home size={12} />
-                            適合家用印表機
+                            {t('self_hint')}
                         </span>
                         <span className="text-rose-500 ml-1 font-bold flex items-center gap-1">
                             <AlertTriangle size={12} />
-                            雙面列印多少有誤差，請以 page 1 的圖案為基準去剪裁。
+                            {t('self_warn')}
                         </span>
                     </span>
                 )}
@@ -1184,7 +1331,7 @@ const App = () => {
                 <div className="w-full flex justify-between items-center mb-6 px-2">
                     <h3 className="font-bold text-slate-700 flex items-center gap-2">
                         <span className="w-8 h-8 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center text-sm font-bold">1</span>
-                        頁面 1：外殼 (背面+耳朵)
+                        {t('page1')}
                     </h3>
                     <span className="text-xs font-mono text-slate-400 bg-slate-50 px-2 py-1 rounded">{dims.width + (dims.glueTab.w*2)} x {dims.frontHeight+dims.backHeight+dims.pocketHeight+dims.buttonTab.h} cm</span>
                 </div>
@@ -1200,12 +1347,12 @@ const App = () => {
                 <div className="w-full flex justify-between items-center mb-6 px-2">
                     <h3 className="font-bold text-slate-700 flex items-center gap-2">
                         <span className="w-8 h-8 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center text-sm font-bold">2</span>
-                        頁面 2：內層 (襯紙{hasTab ? '+扣子' : ''})
+                        {t('page2')} <span className="text-xs font-normal text-slate-500">{hasTab ? t('page2_tab') : t('page2_no_tab')}</span>
                     </h3>
                     {isIbonMode ? (
                         <span className="flex items-center gap-1.5 text-xs font-bold text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-full border border-indigo-100">
                             <ArrowDown size={14} />
-                            ibon列印模式
+                            {t('calibrated')}
                         </span>
                     ) : (
                         <span className="text-xs font-mono text-slate-400 bg-slate-50 px-2 py-1 rounded">{dims.width} x {dims.innerTotalHeight + dims.buttonTab.h} cm</span>
@@ -1216,7 +1363,7 @@ const App = () => {
                     {isIbonMode && (
                         <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
                             <div className="bg-black/50 text-white px-4 py-2 rounded-lg backdrop-blur-sm text-sm font-medium">
-                                輸出時將自動旋轉 180°
+                                {t('rotate_msg')}
                             </div>
                         </div>
                     )}
@@ -1226,7 +1373,7 @@ const App = () => {
         
         <footer className="mt-16 text-center pb-8 border-t border-slate-200 pt-8">
             <p className="text-slate-400 text-sm font-medium">
-                Designed for DIY Fans • 建議使用 160磅以上紙張列印
+                {t('footer')}
             </p>
         </footer>
       </div>
