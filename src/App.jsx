@@ -131,7 +131,7 @@ const TRANSLATIONS = {
     story_desc: 'As dedicated fans, we know the struggle of storing concert tickets. Existing holders rarely fit perfectly or lack personality. We created this tool to let every fan design the perfect home for their precious memories using their own images.',
     howto_title: 'How to Use',
     howto_step1: 'Select Type',
-    howto_step1_desc: 'Choose a template or custom size.',
+    howto_step1_desc: 'Measure your ticket actual length and width.',
     howto_step2: 'Upload Images',
     howto_step2_desc: 'Upload front, back, and inner layer images.',
     howto_step3: 'Adjust & Preview',
@@ -272,7 +272,7 @@ const LandingPage = memo(({ onStart, t, lang, setLang }) => {
                 <div className="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
                     <div className="flex items-center gap-2 font-black text-xl text-indigo-600">
                         <Scissors size={24} />
-                        Ultimate DIY Ticket Holder Helper
+                        演唱會票夾 DIY 小助手 Ultimate DIY Ticket Holder Helper
                     </div>
                     
                     {/* Header 右側區域 */}
@@ -280,7 +280,7 @@ const LandingPage = memo(({ onStart, t, lang, setLang }) => {
                         {/* 國際使用者提示 (僅在中文模式顯示) */}
                         {lang === 'zh-TW' && (
                             <span className="hidden md:block text-xs text-slate-400 font-medium bg-slate-50 px-2 py-1 rounded">
-                                如果是國際使用者，非台灣本地的使用者，請在此切換語言
+                                If you are an international user and not located in Taiwan, please switch the language here.
                             </span>
                         )}
                         <button 
