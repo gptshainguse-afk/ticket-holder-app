@@ -253,15 +253,14 @@ const TICKET_DATA = [
     }
 ];
 
-// --- 0. Landing Page (新增) ---
+// --- 0. Landing Page ---
 const LandingPage = ({ onStart, t, lang, setLang }) => {
     
-    // 處理聯絡表單 (使用 mailto)
     const handleContact = (e) => {
         e.preventDefault();
         const formData = new FormData(e.target);
         const name = formData.get('name');
-        const email = formData.get('email'); // 僅供內容參考
+        const email = formData.get('email'); 
         const message = formData.get('message');
         
         const subject = `[TicketDIY Feedback] from ${name}`;
@@ -272,7 +271,6 @@ const LandingPage = ({ onStart, t, lang, setLang }) => {
 
     return (
         <div className="min-h-screen bg-white">
-            {/* Nav */}
             <nav className="fixed top-0 w-full bg-white/80 backdrop-blur-md border-b border-slate-100 z-50">
                 <div className="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
                     <div className="flex items-center gap-2 font-black text-xl text-indigo-600">
@@ -289,7 +287,6 @@ const LandingPage = ({ onStart, t, lang, setLang }) => {
                 </div>
             </nav>
 
-            {/* Hero */}
             <section className="pt-32 pb-20 px-4 text-center bg-gradient-to-b from-indigo-50 to-white">
                 <div className="max-w-4xl mx-auto">
                     <div className="inline-block p-3 bg-white rounded-full shadow-lg mb-6 ring-4 ring-indigo-50 animate-bounce-slow">
@@ -310,7 +307,6 @@ const LandingPage = ({ onStart, t, lang, setLang }) => {
                 </div>
             </section>
 
-            {/* Story */}
             <section className="py-20 px-4 bg-white">
                 <div className="max-w-5xl mx-auto flex flex-col md:flex-row items-center gap-12">
                     <div className="flex-1 space-y-6">
@@ -323,14 +319,12 @@ const LandingPage = ({ onStart, t, lang, setLang }) => {
                         </p>
                     </div>
                     <div className="flex-1 bg-slate-100 rounded-3xl p-8 aspect-video flex items-center justify-center relative overflow-hidden group">
-                         {/* Placeholder Graphic */}
                          <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1459749411177-3c925d69857f?q=80&w=2070&auto=format&fit=crop')] bg-cover bg-center opacity-80 group-hover:scale-105 transition-transform duration-700"></div>
                          <div className="absolute inset-0 bg-indigo-900/20"></div>
                     </div>
                 </div>
             </section>
 
-            {/* How It Works */}
             <section className="py-20 px-4 bg-slate-50">
                 <div className="max-w-6xl mx-auto">
                     <div className="text-center mb-16">
@@ -355,7 +349,6 @@ const LandingPage = ({ onStart, t, lang, setLang }) => {
                 </div>
             </section>
 
-            {/* FAQ */}
             <section className="py-20 px-4 bg-white">
                 <div className="max-w-3xl mx-auto">
                     <h2 className="text-3xl font-bold text-center text-slate-800 mb-12">{t('faq_title')}</h2>
@@ -375,7 +368,6 @@ const LandingPage = ({ onStart, t, lang, setLang }) => {
                 </div>
             </section>
 
-            {/* Contact */}
             <section className="py-20 px-4 bg-slate-900 text-white">
                 <div className="max-w-4xl mx-auto flex flex-col md:flex-row gap-12">
                     <div className="flex-1">
@@ -430,9 +422,7 @@ const SetupWizard = ({ onComplete, t, lang, setLang }) => {
   const [customError, setCustomError] = useState('');
   const [tabWarning, setTabWarning] = useState('');
 
-  // 取得翻譯後的選項 (根據語言過濾)
   const getTicketOptions = () => {
-      // 英文模式下只保留自訂尺寸
       const options = lang === 'en' 
         ? TICKET_DATA.filter(opt => opt.id === 'custom')
         : TICKET_DATA;
@@ -444,64 +434,48 @@ const SetupWizard = ({ onComplete, t, lang, setLang }) => {
       }));
   };
 
-  // 當語言切換為英文時，自動切換到 Custom
   useEffect(() => {
       if (lang === 'en') {
           setTicketType('custom');
       }
   }, [lang]);
 
-  // 驗證自訂尺寸與卡扣邏輯
   useEffect(() => {
-      // 1. 計算目前的正面與背面高度
-      let currentFrontH = 0;
-      let currentBackH = 0;
-
-      if (ticketType === 'custom') {
-          const w = parseFloat(customWidth);
-          // 自訂計算邏輯
-          if (w > 8) {
-              currentFrontH = 8.5;
-          } else {
-              currentFrontH = w / 0.96;
-              if (currentFrontH > 8.5) currentFrontH = 8.5;
-          }
-          currentBackH = Math.min(currentFrontH + 0.5, 9);
+    if (step === 1.5) {
+      const w = parseFloat(customWidth);
+      
+      let calcFrontHeight;
+      if (w > 8) {
+          calcFrontHeight = 8.5;
       } else {
-          // 標準版型直接讀取設定
-          const selectedOption = TICKET_DATA.find(t => t.id === ticketType);
-          if (selectedOption) {
-              currentFrontH = selectedOption.dims.frontHeight;
-              currentBackH = selectedOption.dims.backHeight;
-          }
+          calcFrontHeight = w / 0.96;
+          if (calcFrontHeight > 8.5) calcFrontHeight = 8.5;
       }
 
-      const totalBodyHeight = currentFrontH + currentBackH;
+      let calcBackHeight = calcFrontHeight + 0.5;
+      if (calcBackHeight > 9) calcBackHeight = 9;
 
-      // 2. 自訂尺寸輸入錯誤檢查 (僅在 Step 1.5)
+      const totalBodyHeight = calcFrontHeight + calcBackHeight;
+
       let errorMsg = '';
-      if (ticketType === 'custom' && step === 1.5) {
-          if (customLength > 27) {
-              errorMsg = t('err_length_max');
-          } else if (parseFloat(customWidth) > 8.5) {
-              errorMsg = t('err_width_max');
-          } else if (totalBodyHeight > 17.5) {
-              errorMsg = t('err_height_max');
-          }
-      }
-
-      // 3. 全域卡扣限制檢查
       let warningMsg = '';
-      if (totalBodyHeight > 17) {
-          warningMsg = t('warn_tab_forced');
-          if (hasTab) setHasTab(false); 
+
+      if (customLength > 27) {
+        errorMsg = t('err_length_max');
+      } else if (w > 8.5) {
+        errorMsg = t('err_width_max');
+      } else if (totalBodyHeight > 17.5) {
+        errorMsg = t('err_height_max');
+      } else if (totalBodyHeight > 17) {
+        warningMsg = t('warn_tab_forced');
+        if (hasTab) setHasTab(false); 
       } else {
-          if (warningMsg === '') setTabWarning('');
+        if (warningMsg === '') setTabWarning('');
       }
 
       setCustomError(errorMsg);
       setTabWarning(warningMsg);
-
+    }
   }, [customWidth, customLength, step, hasTab, ticketType, t]);
 
   const handleNext = () => {
@@ -939,6 +913,9 @@ const App = () => {
   
   const [lang, setLang] = useState('zh-TW');
 
+  // 計算實際是否啟用 ibon 模式 (英文模式下強制為 false)
+  const activeIbonMode = lang === 'zh-TW' && isIbonMode;
+
   // i18n helper
   const t = useCallback((key) => {
       return TRANSLATIONS[lang][key] || key;
@@ -1028,7 +1005,6 @@ const App = () => {
     ctx.save();
     ctx.translate(startX, 0);
 
-    // 這裡 buttonTab.h 如果在 setup 設為 0，startY 就會是 0，正常
     const startY = cm(dims.buttonTab.h);
     const centerX = contentW / 2;
 
@@ -1365,14 +1341,14 @@ const App = () => {
         canvas.width = contentW_cm * PRINT_PIXELS_PER_CM;
         canvas.height = contentH_cm * PRINT_PIXELS_PER_CM;
         
-        if (isIbonMode) {
+        if (activeIbonMode) {
             ctx.save();
             ctx.translate(canvas.width / 2, canvas.height / 2);
             ctx.rotate(Math.PI);
             ctx.translate(-canvas.width / 2, -canvas.height / 2);
         }
         drawInnerLayer(ctx, canvas.width, canvas.height, PRINT_PIXELS_PER_CM);
-        if (isIbonMode) ctx.restore();
+        if (activeIbonMode) ctx.restore();
         
         const imgData = canvas.toDataURL('image/jpeg', 1.0);
         const pdfTotalW = contentW_cm * 10;
@@ -1380,7 +1356,7 @@ const App = () => {
         let finalImageY;
         let x = (pageWidth - pdfTotalW) / 2;
 
-        if (isIbonMode) {
+        if (activeIbonMode) {
             const p1BlockStartMm = (dims.buttonTab.h * 10);
             const p1BlockHeightMm = (dims.frontHeight + dims.backHeight) * 10;
             const p1BlockCenterRelativeMm = p1BlockStartMm + (p1BlockHeightMm / 2);
@@ -1405,7 +1381,7 @@ const App = () => {
         doc.text(t('pdf_page1_text'), 10, 10);
         doc.addPage();
         processInner();
-        if (isIbonMode) {
+        if (activeIbonMode) {
             doc.text(t('pdf_page2_ibon'), 10, 10);
         } else {
             doc.text(t('pdf_page2_normal'), 10, 10);
@@ -1536,22 +1512,25 @@ const App = () => {
                 </div>
 
                 <div className="flex flex-col sm:flex-row items-center gap-4 w-full md:w-auto">
-                    <div className="flex bg-indigo-50 p-1 rounded-xl">
-                        <button 
-                            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all ${isIbonMode ? 'bg-white shadow-sm text-indigo-600 ring-1 ring-indigo-100' : 'text-slate-500 hover:text-slate-700'}`}
-                            onClick={() => setIsIbonMode(true)}
-                        >
-                            <Store size={16} />
-                            {t('ibon_mode')}
-                        </button>
-                        <button 
-                            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all ${!isIbonMode ? 'bg-white shadow-sm text-indigo-600 ring-1 ring-indigo-100' : 'text-slate-500 hover:text-slate-700'}`}
-                            onClick={() => setIsIbonMode(false)}
-                        >
-                            <Printer size={16} />
-                            {t('self_mode')}
-                        </button>
-                    </div>
+                    {/* 按鈕區域：如果是中文顯示切換按鈕，英文則隱藏 */}
+                    {lang === 'zh-TW' && (
+                        <div className="flex bg-indigo-50 p-1 rounded-xl">
+                            <button 
+                                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all ${isIbonMode ? 'bg-white shadow-sm text-indigo-600 ring-1 ring-indigo-100' : 'text-slate-500 hover:text-slate-700'}`}
+                                onClick={() => setIsIbonMode(true)}
+                            >
+                                <Store size={16} />
+                                {t('ibon_mode')}
+                            </button>
+                            <button 
+                                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all ${!isIbonMode ? 'bg-white shadow-sm text-indigo-600 ring-1 ring-indigo-100' : 'text-slate-500 hover:text-slate-700'}`}
+                                onClick={() => setIsIbonMode(false)}
+                            >
+                                <Printer size={16} />
+                                {t('self_mode')}
+                            </button>
+                        </div>
+                    )}
                     
                     <button 
                         onClick={() => handleDownloadPDF('combined')}
@@ -1569,7 +1548,7 @@ const App = () => {
             </div>
             
             <div className="relative z-10 mt-4 text-center">
-                {isIbonMode ? (
+                {activeIbonMode ? (
                     <span className="text-xs text-indigo-600 bg-white/50 px-3 py-1.5 rounded-full border border-indigo-100/50 flex flex-col md:flex-row items-center justify-center gap-1.5 w-fit mx-auto">
                         <span className="flex items-center gap-1.5">
                             <Sparkles size={12} className="text-amber-500" />
@@ -1611,14 +1590,14 @@ const App = () => {
 
             <div className={`
                 bg-white p-6 rounded-3xl shadow-xl border border-slate-100 flex flex-col items-center transition-all duration-500
-                ${isIbonMode ? 'ring-2 ring-indigo-500/30 shadow-indigo-100' : ''}
+                ${activeIbonMode ? 'ring-2 ring-indigo-500/30 shadow-indigo-100' : ''}
             `}>
                 <div className="w-full flex justify-between items-center mb-6 px-2">
                     <h3 className="font-bold text-slate-700 flex items-center gap-2">
                         <span className="w-8 h-8 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center text-sm font-bold">2</span>
                         {t('page2')} <span className="text-xs font-normal text-slate-500">{hasTab ? t('page2_tab') : t('page2_no_tab')}</span>
                     </h3>
-                    {isIbonMode ? (
+                    {activeIbonMode ? (
                         <span className="flex items-center gap-1.5 text-xs font-bold text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-full border border-indigo-100">
                             <ArrowDown size={14} />
                             {t('calibrated')}
@@ -1629,7 +1608,7 @@ const App = () => {
                 </div>
                 <div className="w-full bg-slate-50 rounded-xl border-2 border-dashed border-slate-200 p-4 flex justify-center overflow-auto relative">
                     <canvas ref={innerCanvasRef} className="bg-white shadow-lg max-w-full h-auto rounded-sm" style={{ maxHeight: '500px' }} />
-                    {isIbonMode && (
+                    {activeIbonMode && (
                         <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
                             <div className="bg-black/50 text-white px-4 py-2 rounded-lg backdrop-blur-sm text-sm font-medium">
                                 {t('rotate_msg')}
