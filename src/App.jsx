@@ -130,7 +130,7 @@ const TRANSLATIONS = {
     story_title: 'Why we built this?',
     story_desc: 'As dedicated fans, we know the struggle of storing concert tickets. Existing holders rarely fit perfectly or lack personality. We created this tool to let every fan design the perfect home for their precious memories using their own images.',
     howto_title: 'How to Use',
-    howto_step1: 'Select Type',
+    howto_step1: 'Measuring',
     howto_step1_desc: 'Measure your ticket actual length and width.',
     howto_step2: 'Upload Images',
     howto_step2_desc: 'Upload front, back, and inner layer images.',
