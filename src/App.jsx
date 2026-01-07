@@ -25,6 +25,7 @@ const DEFAULT_DIMS = {
 // --- 多語言字典 ---
 const TRANSLATIONS = {
   'zh-TW': {
+    // Landing Page
     landing_title: '專為粉絲打造的應援神器',
     landing_subtitle: '不管是 ibon 還是全家，輕鬆自製專屬演唱會票夾，收藏每一份感動。',
     landing_start: '立即開始製作',
@@ -52,7 +53,10 @@ const TRANSLATIONS = {
     contact_email: '您的 Email',
     contact_msg: '想說的話...',
     contact_submit: '送出訊息',
-    title: '演唱會票夾 DIY 專業版',
+    
+    // Existing Translations
+    title: '演唱會票夾 DIY 小助手',
+    // ... (保留既有翻譯)
     reset: '重設',
     mode: '模式',
     size_note: '註：尺寸有預留列印縮放的空間，所以會顯示偏大',
@@ -82,10 +86,10 @@ const TRANSLATIONS = {
     move_y: '垂直移動',
     click_upload: '點擊上傳圖片',
     support_fmt: '支援 JPG, PNG',
-    front: '1. 正面 (頭對頭)',
-    back: '2. 背面 (主體)',
-    pocket: '3. 夾層 (底對底)',
-    inner: '4. 內層 (襯紙)',
+    front: '1. 正面',
+    back: '2. 背面',
+    pocket: '3. 夾層',
+    inner: '4. 內層',
     output_setting: '輸出設定與下載',
     output_desc: '我們會生成一份包含兩頁的 A4 PDF 檔案。請根據您的列印需求選擇模式，確保雙面列印時圖案能完美對齊。',
     ibon_mode: 'ibon 列印',
@@ -120,7 +124,7 @@ const TRANSLATIONS = {
     pdf_page2_normal: 'Page 2: Inner Layer',
   },
   'en': {
-    landing_title: 'Ultimate DIY Ticket Holder',
+    landing_title: 'Ultimate DIY Ticket Holder Helper',
     landing_subtitle: 'Create unique fan items easily. Real-time preview, precise layout.',
     landing_start: 'Start Creating Now',
     story_title: 'Why we built this?',
@@ -147,12 +151,12 @@ const TRANSLATIONS = {
     contact_email: 'Your Email',
     contact_msg: 'Message...',
     contact_submit: 'Send Message',
-    title: 'Ticket Holder DIY Pro',
+    title: 'Ultimate DIY Ticket Holder Helper',
     reset: 'Reset',
     mode: 'Mode',
     size_note: 'Note: Sizes include print margins, so they appear larger.',
     step1_title: 'Select Ticket Type',
-    step1_desc: 'Choose a template based on your ticket store',
+    step1_desc: 'Choose a model(for english user only one model',
     step1_5_title: 'Enter Dimensions',
     step1_5_desc: 'Measure your ticket actual length and width',
     step2_title: 'Clasp Settings',
@@ -177,16 +181,16 @@ const TRANSLATIONS = {
     move_y: 'Move Y',
     click_upload: 'Click to Upload',
     support_fmt: 'Supports JPG, PNG',
-    front: '1. Front (Head-to-Head)',
-    back: '2. Back (Main Body)',
-    pocket: '3. Pocket (Tail-to-Tail)',
-    inner: '4. Inner (Liner)',
+    front: '1. Front',
+    back: '2. Back',
+    pocket: '3. Pocket',
+    inner: '4. Inner',
     output_setting: 'Output & Download',
     output_desc: 'Generates a 2-page A4 PDF. Choose a mode for double-sided alignment.',
     ibon_mode: 'ibon Print',
     self_mode: 'Self Print',
-    ibon_hint: 'ibon Optimized: Inner layer rotated + Offset fixed (R 2mm/U 1mm)',
-    self_hint: 'No offset correction. Good for single-sided or home printers.',
+    ibon_hint: 'Please click Download to save the PDF file. After the webpage is reopened, the current settings will not be retained.',
+    self_hint: 'Please click Download to save the PDF file. After the webpage is reopened, the current settings will not be retained.',
     self_warn: 'Double-sided printing has errors. Use Page 1 as the cutting guide.',
     download_pdf: 'Download PDF',
     footer: 'Designed for DIY Fans • 160gsm+ paper recommended',
@@ -213,7 +217,6 @@ const TRANSLATIONS = {
     pdf_page1_text: 'Page 1: Outer Layer',
     pdf_page2_ibon: 'Page 2: Inner Layer (Mirrored & Calibrated for ibon)',
     pdf_page2_normal: 'Page 2: Inner Layer',
-    preview_3d: '3D Preview', 
   }
 };
 
@@ -269,15 +272,25 @@ const LandingPage = memo(({ onStart, t, lang, setLang }) => {
                 <div className="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
                     <div className="flex items-center gap-2 font-black text-xl text-indigo-600">
                         <Scissors size={24} />
-                        TicketDIY
+                        Ultimate DIY Ticket Holder Helper
                     </div>
-                    <button 
-                        onClick={() => setLang(lang === 'zh-TW' ? 'en' : 'zh-TW')}
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-full text-sm font-medium text-slate-600 transition-all"
-                    >
-                        <Globe size={16} />
-                        {lang === 'zh-TW' ? 'English' : '繁體中文'}
-                    </button>
+                    
+                    {/* Header 右側區域 */}
+                    <div className="flex items-center gap-3">
+                        {/* 國際使用者提示 (僅在中文模式顯示) */}
+                        {lang === 'zh-TW' && (
+                            <span className="hidden md:block text-xs text-slate-400 font-medium bg-slate-50 px-2 py-1 rounded">
+                                如果是國際使用者，非台灣本地的使用者，請在此切換語言
+                            </span>
+                        )}
+                        <button 
+                            onClick={() => setLang(lang === 'zh-TW' ? 'en' : 'zh-TW')}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-full text-sm font-medium text-slate-600 transition-all"
+                        >
+                            <Globe size={16} />
+                            {lang === 'zh-TW' ? 'English' : '繁體中文'}
+                        </button>
+                    </div>
                 </div>
             </nav>
 
