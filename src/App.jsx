@@ -186,7 +186,7 @@ const TRANSLATIONS = {
     pocket: '3. Pocket',
     inner: '4. Inner',
     output_setting: 'Output & Download',
-    output_desc: 'Generates a 2-page A4 PDF. Choose a mode for double-sided alignment.',
+    output_desc: 'Generates a 2-page A4 PDF.',
     ibon_mode: 'ibon Print',
     self_mode: 'Self Print',
     ibon_hint: 'Please click Download to save the PDF file. After the webpage is reopened, the current settings will not be retained.',
