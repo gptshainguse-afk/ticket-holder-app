@@ -8,7 +8,7 @@ import { Upload, Trash2, Scissors, Move, ZoomIn, FileText, Layers, Printer, Chec
 const OFFSET_SENSITIVITY = 20; 
 
 // 您的聯絡 Email (請修改此處)
-const CONTACT_EMAIL = "your-email@example.com";
+const CONTACT_EMAIL = "mickeylih2001@gmail.com";
 
 // 預設尺寸參數
 const DEFAULT_DIMS = {
