@@ -182,12 +182,12 @@ const SetupWizard = ({ onComplete }) => {
             <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-2xl -translate-y-1/2 translate-x-1/2"></div>
             <h2 className="text-2xl font-bold flex items-center justify-center gap-2 relative z-10">
                 {step === 1.5 ? <Ruler size={24} /> : <Settings size={24} />}
-                {step === 1 && '選擇票券類型'}
+                {step === 1 && '歡迎使用演唱會門票票夾DIY幫手'}
                 {step === 1.5 && '輸入票券尺寸'}
                 {step === 2 && '卡扣設定'}
             </h2>
             <p className="text-indigo-200 text-sm mt-1 relative z-10">
-                {step === 1 && '依照您的超商票券選擇版型'}
+                {step === 1 && '請根據您票券領取的超商選擇以下選項，如果只是小白單請選自訂尺寸'}
                 {step === 1.5 && '請測量您手中的票券實際長寬'}
                 {step === 2 && '選擇是否製作上方扣子'}
             </p>
@@ -1029,7 +1029,7 @@ const App = () => {
             <Scissors className="w-10 h-10 text-indigo-600" />
           </div>
           <h1 className="text-4xl md:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-violet-600 tracking-tight">
-            演唱會票夾 DIY 專業版
+            演唱會票夾 DIY 小助手
           </h1>
           
           <div className="mt-4 flex flex-col items-center justify-center gap-1">
