@@ -1,11 +1,14 @@
 import React, { useState, useRef, useEffect, useCallback, memo } from 'react';
-import { Upload, Trash2, Scissors, Move, ZoomIn, FileText, Layers, Printer, Check, ArrowDown, Sparkles, Settings, ChevronRight, Store, CreditCard, PenTool, ToggleLeft, ToggleRight, Image as ImageIcon, Ruler, AlertCircle, Home, AlertTriangle, Globe } from 'lucide-react';
+import { Upload, Trash2, Scissors, Move, ZoomIn, FileText, Layers, Printer, Check, ArrowDown, Sparkles, Settings, ChevronRight, Store, CreditCard, PenTool, ToggleLeft, ToggleRight, Image as ImageIcon, Ruler, AlertCircle, Home, AlertTriangle, Globe, Heart, HelpCircle, Mail, Send, Star, Users, CheckCircle, BookOpen } from 'lucide-react';
 
 // 注意：在標準 npm 開發環境中，您可以使用 npm install jspdf 並取消下行註解
 // import { jsPDF } from 'jspdf';
 
 // 定義統一的位移靈敏度
 const OFFSET_SENSITIVITY = 20; 
+
+// 您的聯絡 Email (請修改此處)
+const CONTACT_EMAIL = "your-email@example.com";
 
 // 預設尺寸參數
 const DEFAULT_DIMS = {
@@ -22,8 +25,38 @@ const DEFAULT_DIMS = {
 // --- 多語言字典 ---
 const TRANSLATIONS = {
   'zh-TW': {
+    // Landing Page
+    landing_title: '專為粉絲打造的應援神器',
+    landing_subtitle: '不管是 ibon 還是全家，輕鬆自製專屬演唱會票夾，收藏每一份感動。',
+    landing_start: '立即開始製作',
+    story_title: '為什麼建立這個 App？',
+    story_desc: '身為資深追星族，每次演唱會結束後，珍貴的票根總是找不到合適的家。市面上的票夾尺寸不一，或是設計不夠個人化。因此，我們開發了這個工具，讓每位粉絲都能用自己的圖片，做出最完美、最合身的票夾，讓回憶被妥善珍藏。',
+    howto_title: '使用方法',
+    howto_step1: '選擇版型',
+    howto_step1_desc: '支援 7-11、全家、萊爾富或自訂尺寸。',
+    howto_step2: '上傳圖片',
+    howto_step2_desc: '分別上傳正面、背面與內層的圖片。',
+    howto_step3: '調整與預覽',
+    howto_step3_desc: '拖拉縮放圖片位置，確認裁切範圍。',
+    howto_step4: '下載列印',
+    howto_step4_desc: '一鍵生成 PDF，至超商列印剪裁。',
+    faq_title: '常見問題',
+    faq_q1: '建議使用什麼紙張？',
+    faq_a1: '強烈建議使用「特殊用紙 (160磅)」或更厚的紙張。一般影印紙太軟，做出來的票夾容易變形且沒有支撐力。',
+    faq_q2: '為什麼列印出來尺寸不對？',
+    faq_a2: '請確保列印時縮放比例設定為「100%」或「實際大小」，切勿勾選「配合紙張大小」。',
+    faq_q3: 'ibon 雙面列印要注意什麼？',
+    faq_a3: '本 App 提供 ibon 優化模式，會自動旋轉並校正偏移。若您在家列印，請選擇「長邊翻頁」。',
+    contact_title: '聯絡我們',
+    contact_desc: '有任何建議或發現 Bug？歡迎來信告訴我們！',
+    contact_name: '您的稱呼',
+    contact_email: '您的 Email',
+    contact_msg: '想說的話...',
+    contact_submit: '送出訊息',
+    
+    // Existing Translations
     title: '演唱會票夾 DIY 專業版',
-    subtitle: '打造獨一無二的應援小物 • 即時預覽裁切 • 精準對位輸出',
+    // ... (保留既有翻譯)
     reset: '重設',
     mode: '模式',
     size_note: '註：尺寸有預留列印縮放的空間，所以會顯示偏大',
@@ -35,7 +68,7 @@ const TRANSLATIONS = {
     step2_desc: '選擇是否製作上方扣子',
     next: '下一步',
     prev: '上一步',
-    start: '開始製作',
+    start: '進入編輯器',
     custom_length: '票券長度 (cm)',
     custom_width: '票券寬度 (cm)',
     custom_width_desc: '對應票夾的上下高度',
@@ -91,8 +124,37 @@ const TRANSLATIONS = {
     pdf_page2_normal: 'Page 2: Inner Layer',
   },
   'en': {
+    // Landing Page
+    landing_title: 'Ultimate DIY Ticket Holder',
+    landing_subtitle: 'Create unique fan items easily. Real-time preview, precise layout.',
+    landing_start: 'Start Creating Now',
+    story_title: 'Why we built this?',
+    story_desc: 'As dedicated fans, we know the struggle of storing concert tickets. Existing holders rarely fit perfectly or lack personality. We created this tool to let every fan design the perfect home for their precious memories using their own images.',
+    howto_title: 'How to Use',
+    howto_step1: 'Select Type',
+    howto_step1_desc: 'Choose a template or custom size.',
+    howto_step2: 'Upload Images',
+    howto_step2_desc: 'Upload front, back, and inner layer images.',
+    howto_step3: 'Adjust & Preview',
+    howto_step3_desc: 'Drag and scale to fit the frame.',
+    howto_step4: 'Download & Print',
+    howto_step4_desc: 'Get the PDF and print at convenience stores.',
+    faq_title: 'FAQ',
+    faq_q1: 'What paper should I use?',
+    faq_a1: 'We strongly recommend "Special Paper (160gsm)" or thicker cardstock. Standard copy paper is too flimsy.',
+    faq_q2: 'Why is the size incorrect?',
+    faq_a2: 'Ensure printing scale is set to "100%" or "Actual Size". Do not select "Fit to Page".',
+    faq_q3: 'Tips for double-sided printing?',
+    faq_a3: 'Use the "ibon mode" for auto-correction. For home printers, use "Long-Edge Binding".',
+    contact_title: 'Contact Us',
+    contact_desc: 'Have suggestions or found a bug? Let us know!',
+    contact_name: 'Your Name',
+    contact_email: 'Your Email',
+    contact_msg: 'Message...',
+    contact_submit: 'Send Message',
+
+    // Existing Translations
     title: 'Ticket Holder DIY Pro',
-    subtitle: 'Create unique fan support items • Real-time preview • Precise layout',
     reset: 'Reset',
     mode: 'Mode',
     size_note: 'Note: Sizes include print margins, so they appear larger.',
@@ -104,7 +166,7 @@ const TRANSLATIONS = {
     step2_desc: 'Choose whether to create a top clasp tab',
     next: 'Next',
     prev: 'Back',
-    start: 'Start',
+    start: 'Go to Editor',
     custom_length: 'Ticket Length (cm)',
     custom_width: 'Ticket Width (cm)',
     custom_width_desc: 'Corresponds to holder height',
@@ -161,7 +223,7 @@ const TRANSLATIONS = {
   }
 };
 
-// 票券選項資料 (靜態ID與預設值)
+// 票券選項資料
 const TICKET_DATA = [
     { 
       id: '711', 
@@ -191,6 +253,171 @@ const TICKET_DATA = [
     }
 ];
 
+// --- 0. Landing Page (新增) ---
+const LandingPage = ({ onStart, t, lang, setLang }) => {
+    
+    // 處理聯絡表單 (使用 mailto)
+    const handleContact = (e) => {
+        e.preventDefault();
+        const formData = new FormData(e.target);
+        const name = formData.get('name');
+        const email = formData.get('email'); // 僅供內容參考
+        const message = formData.get('message');
+        
+        const subject = `[TicketDIY Feedback] from ${name}`;
+        const body = `Name: ${name}\nEmail: ${email}\n\nMessage:\n${message}`;
+        
+        window.location.href = `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    };
+
+    return (
+        <div className="min-h-screen bg-white">
+            {/* Nav */}
+            <nav className="fixed top-0 w-full bg-white/80 backdrop-blur-md border-b border-slate-100 z-50">
+                <div className="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
+                    <div className="flex items-center gap-2 font-black text-xl text-indigo-600">
+                        <Scissors size={24} />
+                        TicketDIY
+                    </div>
+                    <button 
+                        onClick={() => setLang(lang === 'zh-TW' ? 'en' : 'zh-TW')}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-full text-sm font-medium text-slate-600 transition-all"
+                    >
+                        <Globe size={16} />
+                        {lang === 'zh-TW' ? 'English' : '繁體中文'}
+                    </button>
+                </div>
+            </nav>
+
+            {/* Hero */}
+            <section className="pt-32 pb-20 px-4 text-center bg-gradient-to-b from-indigo-50 to-white">
+                <div className="max-w-4xl mx-auto">
+                    <div className="inline-block p-3 bg-white rounded-full shadow-lg mb-6 ring-4 ring-indigo-50 animate-bounce-slow">
+                        <Star className="w-10 h-10 text-yellow-400 fill-yellow-400" />
+                    </div>
+                    <h1 className="text-5xl md:text-7xl font-black text-slate-800 mb-6 tracking-tight leading-tight">
+                        {t('landing_title')}
+                    </h1>
+                    <p className="text-xl text-slate-500 mb-10 max-w-2xl mx-auto leading-relaxed">
+                        {t('landing_subtitle')}
+                    </p>
+                    <button 
+                        onClick={onStart}
+                        className="px-10 py-4 bg-indigo-600 text-white text-lg font-bold rounded-full shadow-xl shadow-indigo-200 hover:scale-105 hover:bg-indigo-700 transition-all active:scale-95"
+                    >
+                        {t('landing_start')}
+                    </button>
+                </div>
+            </section>
+
+            {/* Story */}
+            <section className="py-20 px-4 bg-white">
+                <div className="max-w-5xl mx-auto flex flex-col md:flex-row items-center gap-12">
+                    <div className="flex-1 space-y-6">
+                        <div className="flex items-center gap-3 text-indigo-600 font-bold">
+                            <Heart className="fill-indigo-600" /> OUR STORY
+                        </div>
+                        <h2 className="text-3xl font-bold text-slate-800">{t('story_title')}</h2>
+                        <p className="text-slate-500 text-lg leading-relaxed">
+                            {t('story_desc')}
+                        </p>
+                    </div>
+                    <div className="flex-1 bg-slate-100 rounded-3xl p-8 aspect-video flex items-center justify-center relative overflow-hidden group">
+                         {/* Placeholder Graphic */}
+                         <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1459749411177-3c925d69857f?q=80&w=2070&auto=format&fit=crop')] bg-cover bg-center opacity-80 group-hover:scale-105 transition-transform duration-700"></div>
+                         <div className="absolute inset-0 bg-indigo-900/20"></div>
+                    </div>
+                </div>
+            </section>
+
+            {/* How It Works */}
+            <section className="py-20 px-4 bg-slate-50">
+                <div className="max-w-6xl mx-auto">
+                    <div className="text-center mb-16">
+                        <h2 className="text-3xl font-bold text-slate-800">{t('howto_title')}</h2>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+                        {[
+                            { icon: <Store size={32} />, title: t('howto_step1'), desc: t('howto_step1_desc') },
+                            { icon: <Upload size={32} />, title: t('howto_step2'), desc: t('howto_step2_desc') },
+                            { icon: <Move size={32} />, title: t('howto_step3'), desc: t('howto_step3_desc') },
+                            { icon: <Printer size={32} />, title: t('howto_step4'), desc: t('howto_step4_desc') },
+                        ].map((step, idx) => (
+                            <div key={idx} className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 hover:-translate-y-2 transition-all duration-300">
+                                <div className="w-14 h-14 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center mb-4">
+                                    {step.icon}
+                                </div>
+                                <h3 className="font-bold text-xl text-slate-800 mb-2">{step.title}</h3>
+                                <p className="text-slate-500 text-sm">{step.desc}</p>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </section>
+
+            {/* FAQ */}
+            <section className="py-20 px-4 bg-white">
+                <div className="max-w-3xl mx-auto">
+                    <h2 className="text-3xl font-bold text-center text-slate-800 mb-12">{t('faq_title')}</h2>
+                    <div className="space-y-6">
+                        {[1, 2, 3].map((i) => (
+                            <div key={i} className="border border-slate-200 rounded-2xl p-6 hover:border-indigo-200 transition-colors">
+                                <h3 className="font-bold text-lg text-slate-800 mb-2 flex items-start gap-3">
+                                    <HelpCircle className="text-indigo-500 shrink-0 mt-1" size={20} />
+                                    {t(`faq_q${i}`)}
+                                </h3>
+                                <p className="text-slate-500 ml-8">
+                                    {t(`faq_a${i}`)}
+                                </p>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </section>
+
+            {/* Contact */}
+            <section className="py-20 px-4 bg-slate-900 text-white">
+                <div className="max-w-4xl mx-auto flex flex-col md:flex-row gap-12">
+                    <div className="flex-1">
+                        <h2 className="text-3xl font-bold mb-4">{t('contact_title')}</h2>
+                        <p className="text-slate-400 mb-8">{t('contact_desc')}</p>
+                        <div className="flex items-center gap-4 text-slate-400">
+                            <div className="w-12 h-12 bg-white/10 rounded-full flex items-center justify-center">
+                                <Mail />
+                            </div>
+                            <div>
+                                <div className="font-bold text-white">Email Us</div>
+                                <div>{CONTACT_EMAIL}</div>
+                            </div>
+                        </div>
+                    </div>
+                    <form onSubmit={handleContact} className="flex-1 space-y-4 bg-white/5 p-6 rounded-2xl border border-white/10">
+                        <div>
+                            <label className="block text-sm font-bold text-slate-300 mb-1">{t('contact_name')}</label>
+                            <input name="name" required className="w-full bg-slate-800 border-none rounded-lg px-4 py-3 text-white focus:ring-2 focus:ring-indigo-500" />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-bold text-slate-300 mb-1">{t('contact_email')}</label>
+                            <input name="email" type="email" required className="w-full bg-slate-800 border-none rounded-lg px-4 py-3 text-white focus:ring-2 focus:ring-indigo-500" />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-bold text-slate-300 mb-1">{t('contact_msg')}</label>
+                            <textarea name="message" rows="4" required className="w-full bg-slate-800 border-none rounded-lg px-4 py-3 text-white focus:ring-2 focus:ring-indigo-500"></textarea>
+                        </div>
+                        <button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 rounded-xl transition-colors flex items-center justify-center gap-2">
+                            <Send size={18} /> {t('contact_submit')}
+                        </button>
+                    </form>
+                </div>
+            </section>
+
+            <footer className="py-8 text-center text-slate-400 text-sm border-t border-slate-100">
+                &copy; {new Date().getFullYear()} TicketDIY. All rights reserved.
+            </footer>
+        </div>
+    );
+};
+
 // --- 1. 設定精靈元件 ---
 const SetupWizard = ({ onComplete, t, lang, setLang }) => {
   const [step, setStep] = useState(1);
@@ -217,50 +444,65 @@ const SetupWizard = ({ onComplete, t, lang, setLang }) => {
       }));
   };
 
-  // 當語言切換為英文時，自動切換到 Custom，避免停留在隱藏的選項上
+  // 當語言切換為英文時，自動切換到 Custom
   useEffect(() => {
       if (lang === 'en') {
           setTicketType('custom');
       }
   }, [lang]);
 
+  // 驗證自訂尺寸與卡扣邏輯
   useEffect(() => {
-    if (step === 1.5) {
-      const w = parseFloat(customWidth);
-      
-      let calcFrontHeight;
-      if (w > 8) {
-          calcFrontHeight = 8.5;
+      // 1. 計算目前的正面與背面高度
+      let currentFrontH = 0;
+      let currentBackH = 0;
+
+      if (ticketType === 'custom') {
+          const w = parseFloat(customWidth);
+          // 自訂計算邏輯
+          if (w > 8) {
+              currentFrontH = 8.5;
+          } else {
+              currentFrontH = w / 0.96;
+              if (currentFrontH > 8.5) currentFrontH = 8.5;
+          }
+          currentBackH = Math.min(currentFrontH + 0.5, 9);
       } else {
-          calcFrontHeight = w / 0.96;
-          if (calcFrontHeight > 8.5) calcFrontHeight = 8.5;
+          // 標準版型直接讀取設定
+          const selectedOption = TICKET_DATA.find(t => t.id === ticketType);
+          if (selectedOption) {
+              currentFrontH = selectedOption.dims.frontHeight;
+              currentBackH = selectedOption.dims.backHeight;
+          }
       }
 
-      let calcBackHeight = calcFrontHeight + 0.5;
-      if (calcBackHeight > 9) calcBackHeight = 9;
+      const totalBodyHeight = currentFrontH + currentBackH;
 
-      const totalBodyHeight = calcFrontHeight + calcBackHeight;
-
+      // 2. 自訂尺寸輸入錯誤檢查 (僅在 Step 1.5)
       let errorMsg = '';
-      let warningMsg = '';
+      if (ticketType === 'custom' && step === 1.5) {
+          if (customLength > 27) {
+              errorMsg = t('err_length_max');
+          } else if (parseFloat(customWidth) > 8.5) {
+              errorMsg = t('err_width_max');
+          } else if (totalBodyHeight > 17.5) {
+              errorMsg = t('err_height_max');
+          }
+      }
 
-      if (customLength > 27) {
-        errorMsg = t('err_length_max');
-      } else if (w > 8.5) {
-        errorMsg = t('err_width_max');
-      } else if (totalBodyHeight > 17.5) {
-        errorMsg = t('err_height_max');
-      } else if (totalBodyHeight > 17) {
-        warningMsg = t('warn_tab_forced');
-        if (hasTab) setHasTab(false); 
+      // 3. 全域卡扣限制檢查
+      let warningMsg = '';
+      if (totalBodyHeight > 17) {
+          warningMsg = t('warn_tab_forced');
+          if (hasTab) setHasTab(false); 
       } else {
-        if (warningMsg === '') setTabWarning('');
+          if (warningMsg === '') setTabWarning('');
       }
 
       setCustomError(errorMsg);
       setTabWarning(warningMsg);
-    }
-  }, [customWidth, customLength, step, hasTab, t]);
+
+  }, [customWidth, customLength, step, hasTab, ticketType, t]);
 
   const handleNext = () => {
     if (step === 1) {
@@ -315,7 +557,6 @@ const SetupWizard = ({ onComplete, t, lang, setLang }) => {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
-      {/* 語言切換按鈕 (在 Wizard 中也要顯示) */}
       <div className="absolute top-4 right-4 z-50">
         <button 
             onClick={() => setLang(lang === 'zh-TW' ? 'en' : 'zh-TW')}
@@ -689,9 +930,9 @@ const ImageEditorCard = memo(({
 // --- 4. 主應用程式 ---
 const App = () => {
   const [jsPDFLoaded, setJsPDFLoaded] = useState(false);
-  const [isIbonMode, setIsIbonMode] = useState(true); 
+  const [isIbonMode, setIsIbonMode] = useState(true); // Default to true
   
-  const [appMode, setAppMode] = useState('setup');
+  const [appMode, setAppMode] = useState('landing');
   const [dims, setDims] = useState(DEFAULT_DIMS);
   const [hasTab, setHasTab] = useState(true);
   const [ticketTypeId, setTicketTypeId] = useState('711');
@@ -787,6 +1028,7 @@ const App = () => {
     ctx.save();
     ctx.translate(startX, 0);
 
+    // 這裡 buttonTab.h 如果在 setup 設為 0，startY 就會是 0，正常
     const startY = cm(dims.buttonTab.h);
     const centerX = contentW / 2;
 
@@ -1171,6 +1413,10 @@ const App = () => {
         doc.save('ticket-holder-complete.pdf');
     }
   };
+
+  if (appMode === 'landing') {
+    return <LandingPage onStart={() => setAppMode('setup')} t={t} lang={lang} setLang={setLang} />;
+  }
 
   if (appMode === 'setup') {
       return <SetupWizard onComplete={handleSetupComplete} t={t} lang={lang} setLang={setLang} />;
