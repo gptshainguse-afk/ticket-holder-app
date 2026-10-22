@@ -1,8 +1,8 @@
 import React, { useState, useRef, useEffect, useCallback, memo } from 'react';
 import { Upload, Trash2, Scissors, Move, ZoomIn, FileText, Layers, Printer, Check, ArrowDown, Sparkles, Settings, ChevronRight, Store, CreditCard, PenTool, ToggleLeft, ToggleRight, Image as ImageIcon, Ruler, AlertCircle, Home, AlertTriangle, Globe, Heart, HelpCircle, Mail, Send, Star, Users, CheckCircle, BookOpen } from 'lucide-react';
 
-// 注意：在標準 npm 開發環境中，您可以使用 npm install jspdf 並取消下行註解
-// import { jsPDF } from 'jspdf';
+// Ticket Holder v2：單面內側留白、共用實際尺寸座標、雙面校正與內圖出血。
+// 沿用 React + lucide-react + Tailwind；PDF 元件於需要時由 CDN 載入。
 
 // 定義統一的位移靈敏度
 const OFFSET_SENSITIVITY = 20; 
@@ -22,6 +22,88 @@ const DEFAULT_DIMS = {
   hole: { w: 0.8, h: 0.3, margin: 0.5 }
 };
 
+// 列印統一使用 mm。紙面座標、出血與背面校正共用同一套計算。
+const PAPER_SIZES = {
+  a4: { width: 297, height: 210 },
+  a3: { width: 420, height: 297 },
+};
+const PRINT_SETTINGS_KEY = 'ticket-holder-print-v2';
+const DEFAULT_PRINT_SETTINGS = { paper: 'a4', flip: 'long', offsetX: 0, offsetY: 0, bleed: 3 };
+const RECOMMENDED_MARGIN_MM = 5; // 提醒用邊界；實際不可列印範圍依機台而異。
+const finiteNumber = (value, fallback = 0) => {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+};
+const clampNumber = (value, min, max, fallback = 0) => Math.min(max, Math.max(min, finiteNumber(value, fallback)));
+const normalizePrintSettings = (raw = {}) => ({
+  paper: raw.paper === 'a3' ? 'a3' : 'a4',
+  flip: raw.flip === 'short' ? 'short' : 'long',
+  offsetX: clampNumber(raw.offsetX, -10, 10),
+  offsetY: clampNumber(raw.offsetY, -10, 10),
+  bleed: clampNumber(raw.bleed, 0, 5, 3),
+});
+const readPrintSettings = () => {
+  try {
+    const stored = JSON.parse(localStorage.getItem(PRINT_SETTINGS_KEY) || 'null');
+    return stored && typeof stored === 'object' ? normalizePrintSettings(stored) : { ...DEFAULT_PRINT_SETTINGS };
+  } catch {
+    return { ...DEFAULT_PRINT_SETTINGS };
+  }
+};
+
+const getPrintLayout = (dims, hasTab, settings) => {
+  const paper = PAPER_SIZES[settings.paper] || PAPER_SIZES.a4;
+  const width = dims.width * 10;
+  const tabHeight = hasTab ? dims.buttonTab.h * 10 : 0;
+  const innerHeight = (dims.frontHeight + dims.backHeight) * 10 + tabHeight;
+  const outerHeight = innerHeight + dims.pocketHeight * 10;
+  const x = (paper.width - width) / 2;
+  const y = (paper.height - outerHeight) / 2;
+  const ear = dims.glueTab.w * 10;
+  const inner = { x, y, width, height: innerHeight };
+  // 橫式長邊翻頁：上下映射，圖像旋轉 180 度；短邊：左右映射。
+  // 輪廓左右對稱，因此不需鏡像圖像，文字也不會被左右反轉。
+  const back = {
+    x: (settings.flip === 'short' ? paper.width - x - width : x) + settings.offsetX,
+    y: (settings.flip === 'long' ? paper.height - y - innerHeight : y) + settings.offsetY,
+    width,
+    height: innerHeight,
+    rotation: settings.flip === 'long' ? Math.PI : 0,
+  };
+  return { paper, outer: { x: x - ear, y, width: width + ear * 2, height: outerHeight }, inner, back };
+};
+
+const getPrintBounds = (layout, settings, includeInner) => {
+  const boxes = [{ ...layout.outer, padding: 0.3 }]; // 外殼裁切線半寬。
+  if (includeInner) boxes.push({ ...layout.back, padding: settings.bleed });
+  const minimumMargin = Math.min(...boxes.flatMap(box => [
+    box.x - box.padding,
+    box.y - box.padding,
+    layout.paper.width - box.x - box.width - box.padding,
+    layout.paper.height - box.y - box.height - box.padding,
+  ]));
+  return { outside: minimumMargin < -0.001, nearEdge: minimumMargin < RECOMMENDED_MARGIN_MM, minimumMargin };
+};
+
+let pdfLibraryPromise = null;
+const loadPdfLibrary = () => {
+  if (window.jspdf?.jsPDF) return Promise.resolve();
+  if (pdfLibraryPromise) return pdfLibraryPromise;
+  pdfLibraryPromise = new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+    script.async = true;
+    script.onload = () => {
+      if (window.jspdf?.jsPDF) resolve();
+      else { script.remove(); pdfLibraryPromise = null; reject(new Error('PDF module unavailable')); }
+    };
+    script.onerror = () => { script.remove(); pdfLibraryPromise = null; reject(new Error('PDF module load failed')); };
+    document.body.appendChild(script);
+  });
+  return pdfLibraryPromise;
+};
+
+
 // --- 多語言字典 ---
 const TRANSLATIONS = {
   'zh-TW': {
@@ -35,18 +117,18 @@ const TRANSLATIONS = {
     howto_step1: '選擇版型',
     howto_step1_desc: '支援 7-11、全家、萊爾富或自訂尺寸。',
     howto_step2: '上傳圖片',
-    howto_step2_desc: '分別上傳正面、背面與內層的圖片。',
+    howto_step2_desc: "上傳正面、背面與夾層；內側可選擇印圖或留白。",
     howto_step3: '調整與預覽',
     howto_step3_desc: '拖拉縮放圖片位置，確認裁切範圍。',
     howto_step4: '下載列印',
-    howto_step4_desc: '一鍵生成 PDF，至超商列印剪裁。',
+    howto_step4_desc: "下載實際尺寸 PDF，依所選紙張單面或雙面列印。",
     faq_title: '常見問題',
     faq_q1: '建議使用什麼紙張？',
     faq_a1: '強烈建議使用「特殊用紙 (160磅)」或更厚的紙張。一般影印紙太軟，做出來的票夾容易變形且沒有支撐力。',
     faq_q2: '為什麼列印出來尺寸不對？',
     faq_a2: '請確保列印時縮放比例設定為「100%」或「實際大小」，切勿勾選「配合紙張大小」。',
-    faq_q3: 'ibon 雙面列印要注意什麼？',
-    faq_a3: '本 App 提供 ibon 優化模式，會自動旋轉並校正偏移。若您在家列印，請選擇「長邊翻頁」。',
+    faq_q3: "雙面列印如何對位？",
+    faq_a3: "先用校正測試頁確認尺寸與翻頁方向，再微調背面位置。不同機台、紙張與紙匣可能有不同誤差；若希望省去對位，可選擇內側空白並單面列印。",
     contact_title: '聯絡我們',
     contact_desc: '有任何建議或發現 Bug？歡迎來信告訴我們！',
     contact_name: '您的稱呼',
@@ -59,7 +141,7 @@ const TRANSLATIONS = {
     // ... (保留既有翻譯)
     reset: '重設',
     mode: '模式',
-    size_note: '註：尺寸有預留列印縮放的空間，所以會顯示偏大',
+    size_note: "尺寸為票夾實際展開尺寸；列印請用 100%／實際大小。",
     step1_title: '選擇票券類型',
     step1_desc: '依照您的超商票券選擇版型',
     step1_5_title: '輸入票券尺寸',
@@ -74,9 +156,9 @@ const TRANSLATIONS = {
     custom_width_desc: '對應票夾的上下高度',
     custom_length_desc: '對應票夾的左右寬度',
     err_width_max: '票券寬度不可大於 8.5cm。',
-    err_length_max: '票券長度不可大於 27cm，否則將超出 A4 紙張範圍。',
-    err_height_max: '計算後的票夾展開高度過大，將超出 A4 紙張範圍。',
-    warn_tab_forced: '因尺寸接近 A4 極限，已強制關閉卡扣功能 (將厚度加回正面)。',
+    err_length_max: "票券長度不可大於 27 cm。較大的版型會需要 A3 紙張。",
+    err_height_max: "計算後的票夾本體高度超過此版型的 17.5 cm 上限。",
+    warn_tab_forced: "票夾較高，已預設取消卡扣；所需紙張仍以實際展開尺寸判定。",
     tab_enable: '製作卡扣',
     tab_enable_desc: '上方會有一個小梯形凸起，並在夾層打孔，可將票夾扣上防止票券掉出。',
     tab_disable: '不做卡扣',
@@ -91,20 +173,12 @@ const TRANSLATIONS = {
     pocket: '3. 夾層',
     inner: '4. 內層',
     output_setting: '輸出設定與下載',
-    output_desc: '我們會生成一份包含兩頁的 A4 PDF 檔案。請根據您的列印需求選擇模式，確保雙面列印時圖案能完美對齊。',
-    ibon_mode: 'ibon 列印',
-    self_mode: '自行列印',
-    ibon_hint: '僅針對ibon列印優化，其他超商非預設列印選項',
-    self_hint: '自行列印適合家用印表機(請用長邊翻頁)',
-    self_warn: '雙面列印多少有誤差，請以 page 1 的圖案為基準去剪裁。',
-    download_pdf: '下載完整 PDF',
+    output_desc: "依內側選項輸出 1 頁或 2 頁 PDF，並保留票夾的實際尺寸。",
     footer: 'Designed for DIY Fans • 建議使用 160磅以上紙張列印',
-    page1: '頁面 1：外殼 (背面+耳朵)',
-    page2: '頁面 2：內層',
+    page1: "頁面 1：外側、口袋與裁切線",
+    page2: "頁面 2：內側圖案",
     page2_tab: '(襯紙+扣子)',
     page2_no_tab: '(無扣子)',
-    calibrated: '已偏移校正',
-    rotate_msg: '輸出時將自動旋轉 180°',
     pdf_loading: '載入中...',
     ticket_711: '7-Eleven',
     ticket_711_desc: '標準尺寸 (23cm)',
@@ -119,9 +193,49 @@ const TRANSLATIONS = {
     front_back: '正面/背面',
     inner_with_tab: '內層圖 (含扣子)',
     inner_no_tab: '內層圖 (無扣子)',
-    pdf_page1_text: 'Page 1: Outer Layer',
-    pdf_page2_ibon: 'Page 2: Inner Layer (Mirrored & Calibrated for ibon)',
     pdf_page2_normal: 'Page 2: Inner Layer',
+    interior_title: "票夾內側",
+    interior_image: "內側有圖・雙面列印",
+    interior_image_desc: "上傳內側圖片，輸出 2 頁 PDF。",
+    interior_blank: "內側空白・單面列印",
+    interior_blank_desc: "只印外側，輸出 1 頁 PDF，省去正反對位。",
+    inner_blank_preview: "內側保留紙張原色",
+    inner_blank_note: "本次只輸出第 1 頁。已上傳的內側圖片會保留，切回雙面即可繼續使用。",
+    download_single: "下載單面 PDF（1 頁）",
+    download_double: "下載雙面 PDF（2 頁）",
+    download_calibration: "下載雙面校正測試頁",
+    downloading: "正在產生 PDF…",
+    pdf_load_error: "PDF 元件載入失敗，請確認網路後重試。",
+    pdf_retry: "重新載入 PDF 元件",
+    pdf_export_error: "PDF 產生失敗，請稍後重試。",
+    paper_size: "列印紙張",
+    paper_a4: "A4 橫式（297 × 210 mm）",
+    paper_a3: "A3 橫式（420 × 297 mm）",
+    paper_auto_a3: "此版型在 A4 上的邊界不足，已改用 A3，保留實際尺寸。",
+    paper_overflow: "目前版型、出血或背面位移超出紙張範圍。請改用 A3，或減少位移／出血後再下載。",
+    paper_margin_warning: "圖案接近紙邊，可能超出印表機可列印範圍。請先試印，或改用較大的紙張；勿用縮放解決。",
+    flip_edge: "雙面翻頁方式",
+    flip_long: "長邊翻頁（橫式上下翻）",
+    flip_short: "短邊翻頁（橫式左右翻）",
+    flip_hint: "列印視窗請選擇相同的翻頁方式。若機台沒有此選項，先用校正測試頁確認方向。",
+    bleed: "內側出血",
+    bleed_none: "無出血（0 mm）",
+    bleed_help: "預設向外延伸 3 mm，減少些微偏移造成的露白；成品尺寸不變，請依第 1 頁裁切。",
+    calibration_title: "雙面對位微調與測試",
+    offset_x: "背面水平位移 X（mm）",
+    offset_y: "背面垂直位移 Y（mm）",
+    offset_help: "以第 2 頁正常閱讀方向看：X 正值往右、負值往左；Y 正值往下、負值往上。",
+    calibration_steps: "先以實際大小雙面列印校正頁，量測 100 mm 標尺，再將第 2 頁朝向自己透光查看。確認 F1／B1、F2／B2、F3／B3 配對方向正確，再調整圓心與十字的固定偏移。",
+    calibration_example: "例如：B 圓心比透過紙張看到的 F 十字偏右 2 mm、偏下 1 mm，請在原本的 X 減 2、Y 減 1，再次試印。",
+    calibration_limits: "位移微調只能補償穩定的平移，無法修正縮放、歪斜或每張紙不同的進紙誤差。",
+    calibration_reset: "將 X／Y 歸零",
+    calibration_saved: "列印設定會保留於此瀏覽器。更換機台、紙張或紙匣後，請重新試印校正。",
+    print_single_hint: "請選所設定的紙張、單面列印、100%／實際大小。依第 1 頁實線裁切、虛線折疊。",
+    print_double_hint: "請選所設定的紙張、雙面列印及相同的翻頁方式，比例設為 100%／實際大小。裁切與折疊一律以第 1 頁為準。",
+    missing_inner: "雙面模式需要內側圖片。請先上傳，或切換為「內側空白・單面列印」。",
+    actual_pdf_preview: "PDF 紙面預覽",
+    back_preview_hint: "預覽與 PDF 方向一致；長邊模式的內側圖片會旋轉 180°。",
+    err_dimensions: "請輸入有效且大於 0 的票券長度與寬度。",
   },
   'en': {
     landing_title: 'Ultimate DIY Ticket Holder Helper',
@@ -133,18 +247,18 @@ const TRANSLATIONS = {
     howto_step1: 'Measuring',
     howto_step1_desc: 'Measure your ticket actual length and width.',
     howto_step2: 'Upload Images',
-    howto_step2_desc: 'Upload front, back, and inner layer images.',
+    howto_step2_desc: "Upload the outside and pocket images. Print an inside image or leave it blank.",
     howto_step3: 'Adjust & Preview',
     howto_step3_desc: 'Drag and scale to fit the frame.',
     howto_step4: 'Download & Print',
-    howto_step4_desc: 'Get the PDF and print at convenience stores.',
+    howto_step4_desc: "Download an actual-size PDF and print on the selected paper, single- or double-sided.",
     faq_title: 'FAQ',
     faq_q1: 'What paper should I use?',
     faq_a1: 'We strongly recommend "Special Paper (160gsm)" or thicker cardstock. Standard copy paper is too flimsy.',
     faq_q2: 'Why is the size incorrect?',
     faq_a2: 'Ensure printing scale is set to "100%" or "Actual Size". Do not select "Fit to Page".',
-    faq_q3: 'Tips for double-sided printing?',
-    faq_a3: 'Use the "ibon mode" for auto-correction. For home printers, use "Long-Edge Binding".',
+    faq_q3: "How do I align double-sided prints?",
+    faq_a3: "Use the calibration pages to check size and flip direction, then adjust the back-side position. Results can vary by printer, paper, and tray. Choose a blank inside and single-sided printing to avoid duplex alignment.",
     contact_title: 'Contact Us',
     contact_desc: 'Have suggestions or found a bug? Let us know!',
     contact_name: 'Your Name',
@@ -154,9 +268,9 @@ const TRANSLATIONS = {
     title: 'Ultimate DIY Ticket Holder Helper',
     reset: 'Reset',
     mode: 'Mode',
-    size_note: 'Note: Sizes include print margins, so they appear larger.',
+    size_note: "Dimensions describe the unfolded holder. Print at 100% / Actual size.",
     step1_title: 'Select Ticket Type',
-    step1_desc: 'Choose a model(for english user only one model',
+    step1_desc: "Choose a template or enter your ticket dimensions.",
     step1_5_title: 'Enter Dimensions',
     step1_5_desc: 'Measure your ticket actual length and width',
     step2_title: 'Clasp Settings',
@@ -169,9 +283,9 @@ const TRANSLATIONS = {
     custom_width_desc: 'Corresponds to holder height',
     custom_length_desc: 'Corresponds to holder width',
     err_width_max: 'Ticket width cannot exceed 8.5cm.',
-    err_length_max: 'Ticket length cannot exceed 27cm (A4 limit).',
-    err_height_max: 'Calculated holder height is too large for A4 paper.',
-    warn_tab_forced: 'Clasp forced off due to size limits (thickness added to front).',
+    err_length_max: "Ticket length cannot exceed 27 cm. Larger templates require A3 paper.",
+    err_height_max: "The calculated body height exceeds the 17.5 cm limit for this template.",
+    warn_tab_forced: "The holder is tall, so the clasp is off by default. Paper size still depends on the final unfolded dimensions.",
     tab_enable: 'With Clasp',
     tab_enable_desc: 'Adds a trapezoidal tab and a hole in the pocket to secure the ticket.',
     tab_disable: 'No Clasp',
@@ -186,20 +300,12 @@ const TRANSLATIONS = {
     pocket: '3. Pocket',
     inner: '4. Inner',
     output_setting: 'Output & Download',
-    output_desc: 'Generates a 2-page A4 PDF.',
-    ibon_mode: 'ibon Print',
-    self_mode: 'Self Print',
-    ibon_hint: 'Please click Download to save the PDF file. After the webpage is reopened, the current settings will not be retained.',
-    self_hint: 'Please click Download to save the PDF file. After the webpage is reopened, the current settings will not be retained.',
-    self_warn: 'Double-sided printing has errors. Use Page 1 as the cutting guide.',
-    download_pdf: 'Download PDF',
+    output_desc: "Export a 1-page or 2-page PDF at the holder's actual dimensions, based on your inside option.",
     footer: 'Designed for DIY Fans • 160gsm+ paper recommended',
-    page1: 'Page 1: Outer Shell (Back+Ears)',
-    page2: 'Page 2: Inner Layer',
+    page1: "Page 1: Outside, pocket and cutting guides",
+    page2: "Page 2: Inside artwork",
     page2_tab: '(Liner+Tab)',
     page2_no_tab: '(No Tab)',
-    calibrated: 'Calibrated',
-    rotate_msg: 'Auto-rotated 180° in output',
     pdf_loading: 'Loading...',
     ticket_711: '7-Eleven',
     ticket_711_desc: 'Standard (23cm)',
@@ -214,9 +320,49 @@ const TRANSLATIONS = {
     front_back: 'Front/Back',
     inner_with_tab: 'Inner (With Tab)',
     inner_no_tab: 'Inner (No Tab)',
-    pdf_page1_text: 'Page 1: Outer Layer',
-    pdf_page2_ibon: 'Page 2: Inner Layer (Mirrored & Calibrated for ibon)',
     pdf_page2_normal: 'Page 2: Inner Layer',
+    interior_title: "Inside of the holder",
+    interior_image: "Printed inside · Double-sided",
+    interior_image_desc: "Upload an inside image and export a 2-page PDF.",
+    interior_blank: "Blank inside · Single-sided",
+    interior_blank_desc: "Print only the outside. Export a 1-page PDF with no duplex alignment needed.",
+    inner_blank_preview: "The inside keeps the paper's original color",
+    inner_blank_note: "Only page 1 will be exported. Your inside image is kept for when you switch back to double-sided printing.",
+    download_single: "Download single-sided PDF (1 page)",
+    download_double: "Download double-sided PDF (2 pages)",
+    download_calibration: "Download duplex calibration pages",
+    downloading: "Creating PDF…",
+    pdf_load_error: "The PDF component could not load. Check your connection and try again.",
+    pdf_retry: "Reload PDF component",
+    pdf_export_error: "The PDF could not be created. Please try again.",
+    paper_size: "Paper size",
+    paper_a4: "A4 landscape (297 × 210 mm)",
+    paper_a3: "A3 landscape (420 × 297 mm)",
+    paper_auto_a3: "This template leaves too little room on A4. A3 has been selected to preserve its actual size.",
+    paper_overflow: "The template, bleed, or back-side offset extends beyond the paper. Select A3 or reduce the offset or bleed before downloading.",
+    paper_margin_warning: "Artwork is close to the paper edge and may exceed your printer's printable area. Test first or use larger paper; keep the scale at actual size.",
+    flip_edge: "Duplex flip edge",
+    flip_long: "Long edge (top/bottom in landscape)",
+    flip_short: "Short edge (left/right in landscape)",
+    flip_hint: "Use the same flip edge in the print dialog. If the printer offers no choice, use the calibration pages to check the orientation first.",
+    bleed: "Inside bleed",
+    bleed_none: "No bleed (0 mm)",
+    bleed_help: "The default 3 mm extension helps hide small alignment gaps. Finished dimensions stay the same; cut using page 1.",
+    calibration_title: "Duplex alignment and test pages",
+    offset_x: "Back-side horizontal offset X (mm)",
+    offset_y: "Back-side vertical offset Y (mm)",
+    offset_help: "With page 2 upright and facing you: positive X moves right, negative X left; positive Y moves down, negative Y up.",
+    calibration_steps: "Print the calibration pages double-sided at actual size. Check the 100 mm ruler, then hold page 2 toward you against a light. Confirm that F1/B1, F2/B2, and F3/B3 match before adjusting any consistent offset between the circles and crosses.",
+    calibration_example: "Example: if a B circle is 2 mm right and 1 mm below its F cross seen through the paper, subtract 2 from the current X value and 1 from Y, then test again.",
+    calibration_limits: "Offsets correct consistent shifts only. They cannot fix scaling, skew, or paper-feed errors that vary from sheet to sheet.",
+    calibration_reset: "Reset X/Y to zero",
+    calibration_saved: "Print settings are saved in this browser. Recalibrate after changing the printer, paper, or tray.",
+    print_single_hint: "Select the chosen paper size, single-sided printing, and 100% / Actual size. Cut along the solid lines and fold along the dashed lines on page 1.",
+    print_double_hint: "Select the chosen paper size, double-sided printing, and the matching flip edge. Use 100% / Actual size. Follow page 1 for all cutting and folding.",
+    missing_inner: "Double-sided mode needs an inside image. Upload one or choose Blank inside · Single-sided.",
+    actual_pdf_preview: "PDF page preview",
+    back_preview_hint: "The preview matches the PDF orientation. Long-edge mode rotates the inside artwork by 180°.",
+    err_dimensions: "Enter a valid ticket length and width greater than 0.",
   }
 };
 
@@ -483,7 +629,9 @@ const SetupWizard = memo(({ onComplete, t, lang, setLang }) => {
       let errorMsg = '';
       let warningMsg = '';
 
-      if (customLength > 27) {
+      if (!Number.isFinite(Number(customLength)) || !Number.isFinite(w) || Number(customLength) <= 0 || w <= 0) {
+        errorMsg = t('err_dimensions');
+      } else if (customLength > 27) {
         errorMsg = t('err_length_max');
       } else if (w > 8.5) {
         errorMsg = t('err_width_max');
@@ -548,6 +696,7 @@ const SetupWizard = memo(({ onComplete, t, lang, setLang }) => {
         finalDims.buttonTab.h = 0;
       }
 
+      finalDims.innerTotalHeight = Number((finalDims.frontHeight + finalDims.backHeight).toFixed(2));
       onComplete(finalDims, ticketType, hasTab);
     }
   };
@@ -927,34 +1076,56 @@ const ImageEditorCard = memo(({
 // --- 4. 主應用程式 ---
 const App = () => {
   const [jsPDFLoaded, setJsPDFLoaded] = useState(false);
-  const [isIbonMode, setIsIbonMode] = useState(true); 
-  
+  const [pdfLoadError, setPdfLoadError] = useState(false);
+  const [pdfLoadAttempt, setPdfLoadAttempt] = useState(0);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [outputError, setOutputError] = useState('');
+  const [innerMode, setInnerMode] = useState('image');
+  const [printSettings, setPrintSettings] = useState(readPrintSettings);
+  const [autoPaperNotice, setAutoPaperNotice] = useState(false);
+  const downloadLockRef = useRef(false);
+
   const [appMode, setAppMode] = useState('landing');
   const [dims, setDims] = useState(DEFAULT_DIMS);
   const [hasTab, setHasTab] = useState(true);
   const [ticketTypeId, setTicketTypeId] = useState('711');
   const [lang, setLang] = useState('zh-TW');
+  const isSingleSided = innerMode === 'blank';
+  const settings = normalizePrintSettings(printSettings);
+  const printLayout = getPrintLayout(dims, hasTab, settings);
+  const printBounds = getPrintBounds(printLayout, settings, !isSingleSided);
+  const innerHeightCm = Number((dims.frontHeight + dims.backHeight + (hasTab ? dims.buttonTab.h : 0)).toFixed(2));
 
-  // 計算實際是否啟用 ibon 模式 (英文模式下強制為 false)
-  const activeIbonMode = lang === 'zh-TW' && isIbonMode;
-
-  // i18n helper
-  const t = useCallback((key) => {
-      return TRANSLATIONS[lang][key] || key;
-  }, [lang]);
+  const t = useCallback((key) => TRANSLATIONS[lang][key] || key, [lang]);
 
   useEffect(() => {
-    if (window.jspdf) {
-      setJsPDFLoaded(true);
-      return;
-    }
-    const script = document.createElement('script');
-    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
-    script.onload = () => {
-      setJsPDFLoaded(true);
-    };
-    document.body.appendChild(script);
-  }, []);
+    let cancelled = false;
+    setPdfLoadError(false);
+    loadPdfLibrary().then(() => {
+      if (!cancelled) setJsPDFLoaded(true);
+    }).catch(() => {
+      if (!cancelled) { setJsPDFLoaded(false); setPdfLoadError(true); }
+    });
+    return () => { cancelled = true; };
+  }, [pdfLoadAttempt]);
+
+  useEffect(() => {
+    try { localStorage.setItem(PRINT_SETTINGS_KEY, JSON.stringify(normalizePrintSettings(printSettings))); }
+    catch { /* 隱私模式或停用儲存時仍可正常下載。 */ }
+  }, [printSettings]);
+
+  const changePrintSetting = (key, value) => {
+    setOutputError('');
+    if (key === 'paper') setAutoPaperNotice(false);
+    setPrintSettings(previous => ({ ...previous, [key]: value }));
+  };
+
+  const changeInnerMode = (value) => {
+    setInnerMode(value);
+    setOutputError('');
+    // 僅切換輸出模式，保留已上傳的內圖與編輯位置。
+  };
+
 
   const [images, setImages] = useState({
     back: null,
@@ -964,14 +1135,17 @@ const App = () => {
   });
 
   const handleSetupComplete = (newDims, type, tabEnabled) => {
-      setDims(newDims);
-      setHasTab(tabEnabled);
-      setTicketTypeId(type);
-      setAppMode('editor');
+    const normalizedDims = { ...newDims, innerTotalHeight: Number((newDims.frontHeight + newDims.backHeight).toFixed(2)) };
+    setDims(normalizedDims);
+    setHasTab(tabEnabled);
+    setTicketTypeId(type);
+    const a4Layout = getPrintLayout(normalizedDims, tabEnabled, { ...DEFAULT_PRINT_SETTINGS, paper: 'a4' });
+    const needsA3 = getPrintBounds(a4Layout, { ...DEFAULT_PRINT_SETTINGS, bleed: 0 }, false).nearEdge;
+    setPrintSettings(previous => ({ ...previous, paper: needsA3 ? 'a3' : 'a4' }));
+    setAutoPaperNotice(needsA3);
+    setOutputError('');
+    setAppMode('editor');
   };
-
-  const PREVIEW_PIXELS_PER_CM = 40; 
-  const PRINT_PIXELS_PER_CM = 118.11;
 
   const outerCanvasRef = useRef(null);
   const innerCanvasRef = useRef(null);
@@ -1011,7 +1185,7 @@ const App = () => {
     setImages(prev => ({ ...prev, [type]: null }));
   }, []);
 
-  const drawOuterLayer = useCallback((ctx, width, height, scaleFactor) => {
+  const drawOuterLayer = useCallback((ctx, width, height, scaleFactor, showPlaceholder = true) => {
     const cm = (val) => val * scaleFactor;
     const offsetMultiplier = scaleFactor / OFFSET_SENSITIVITY;
     
@@ -1058,8 +1232,8 @@ const App = () => {
             const offsetY = imgData.y * offsetMultiplier;
             ctx.drawImage(img, -drawW / 2 + offsetX, -drawH / 2 + offsetY, drawW, drawH);
         } else {
-            ctx.fillStyle = rotate ? '#fff1f2' : '#eff6ff';
-            if(rotate && rectY > height/2) ctx.fillStyle = '#f0fdf4';
+            ctx.fillStyle = showPlaceholder ? (rotate ? '#fff1f2' : '#eff6ff') : '#ffffff';
+            if(showPlaceholder && rotate && rectY > height/2) ctx.fillStyle = '#f0fdf4';
             
             const bigSize = Math.max(rectW, rectH) * 2;
             ctx.fillRect(-bigSize/2, -bigSize/2, bigSize, bigSize);
@@ -1068,7 +1242,7 @@ const App = () => {
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             ctx.font = `bold ${cm(0.4)}px sans-serif`;
-            ctx.fillText(rotate ? t('rotate_needed') : t('front_back'), 0, 0);
+            if (showPlaceholder) ctx.fillText(rotate ? t('rotate_needed') : t('front_back'), 0, 0);
         }
         ctx.restore();
     };
@@ -1115,18 +1289,17 @@ const App = () => {
         ctx.beginPath();
         if (isLeft) {
             ctx.moveTo(0, y); 
-            ctx.lineTo(-earW, y - 10); 
-            ctx.lineTo(-earW, y - earH + 10);
+            ctx.lineTo(-earW, y - cm(0.25)); 
+            ctx.lineTo(-earW, y - earH + cm(0.25));
             ctx.lineTo(0, y - earH);
         } else {
             ctx.moveTo(contentW, y);
-            ctx.lineTo(contentW + earW, y - 10);
-            ctx.lineTo(contentW + earW, y - earH + 10);
+            ctx.lineTo(contentW + earW, y - cm(0.25));
+            ctx.lineTo(contentW + earW, y - earH + cm(0.25));
             ctx.lineTo(contentW, y - earH);
         }
         ctx.closePath();
         ctx.fill();
-        ctx.stroke();
 
         ctx.fillStyle = '#94a3b8';
         ctx.font = `${cm(0.25)}px Arial`;
@@ -1190,6 +1363,13 @@ const App = () => {
     ctx.moveTo(0, pocketY);
     ctx.lineTo(contentW, pocketY);
     ctx.stroke();
+    // 黏貼耳朵的根部是折線，不能畫成會把耳朵剪掉的實線。
+    ctx.beginPath();
+    ctx.moveTo(0, pocketY - earH);
+    ctx.lineTo(0, pocketY);
+    ctx.moveTo(contentW, pocketY - earH);
+    ctx.lineTo(contentW, pocketY);
+    ctx.stroke();
     ctx.restore();
 
     ctx.strokeStyle = '#334155';
@@ -1197,8 +1377,16 @@ const App = () => {
     ctx.beginPath();
     
     ctx.moveTo(0, startY);
-    ctx.lineTo(0, height); 
+    ctx.lineTo(0, pocketY - earH);
+    ctx.lineTo(-earW, pocketY - earH + cm(0.25));
+    ctx.lineTo(-earW, pocketY - cm(0.25));
+    ctx.lineTo(0, pocketY);
+    ctx.lineTo(0, height);
     ctx.lineTo(contentW, height);
+    ctx.lineTo(contentW, pocketY);
+    ctx.lineTo(contentW + earW, pocketY - cm(0.25));
+    ctx.lineTo(contentW + earW, pocketY - earH + cm(0.25));
+    ctx.lineTo(contentW, pocketY - earH);
     ctx.lineTo(contentW, startY);
     
     if (hasTab) {
@@ -1216,201 +1404,176 @@ const App = () => {
 
   }, [images, dims, hasTab, t]);
 
-  const drawInnerLayer = useCallback((ctx, width, height, scaleFactor) => {
-    const cm = (val) => val * scaleFactor;
-    const offsetMultiplier = scaleFactor / OFFSET_SENSITIVITY;
+  // 內圖先依名義尺寸排版，再將邊緣像素向外延伸作出血。
+  // 不放大整張內圖、不縮小成品，也不印第二套裁切框。
+  const createInnerArtwork = useCallback((pixelsPerMm, showPlaceholder) => {
+    const widthMm = dims.width * 10;
+    const heightMm = (dims.frontHeight + dims.backHeight + (hasTab ? dims.buttonTab.h : 0)) * 10;
+    const raw = document.createElement('canvas');
+    raw.width = Math.max(1, Math.round(widthMm * pixelsPerMm));
+    raw.height = Math.max(1, Math.round(heightMm * pixelsPerMm));
+    const context = raw.getContext('2d');
+    context.setTransform(raw.width / widthMm, 0, 0, raw.height / heightMm, 0, 0);
+    context.fillStyle = '#ffffff';
+    context.fillRect(0, 0, widthMm, heightMm);
+    if (images.inner?.src) {
+      const img = images.inner.src;
+      const baseScale = Math.max(widthMm / img.width, heightMm / img.height);
+      const imageScale = images.inner.scale * baseScale;
+      const drawW = img.width * imageScale;
+      const drawH = img.height * imageScale;
+      context.drawImage(img,
+        (widthMm - drawW) / 2 + images.inner.x * 10 / OFFSET_SENSITIVITY,
+        (heightMm - drawH) / 2 + images.inner.y * 10 / OFFSET_SENSITIVITY,
+        drawW, drawH);
+    } else if (showPlaceholder) {
+      context.fillStyle = '#f8fafc';
+      context.fillRect(0, 0, widthMm, heightMm);
+      context.fillStyle = '#94a3b8';
+      context.textAlign = 'center';
+      context.textBaseline = 'middle';
+      context.font = 'bold 4px sans-serif';
+      context.fillText(t('missing_inner'), widthMm / 2, heightMm / 2, widthMm - 10);
+    }
+    return raw;
+  }, [dims, hasTab, images.inner, t]);
 
-    const contentW = cm(dims.width);
-    const bodyH = cm(dims.innerTotalHeight);
-    const tabH = cm(dims.buttonTab.h);
-    const tabBaseW = cm(dims.buttonTab.w);
-    const tabTipW = cm(dims.buttonTab.tipW);
-
-    const totalH = bodyH + tabH;
-    const startX = (width - contentW) / 2;
-    const startY = (height - totalH) / 2 + tabH; 
-
-    const centerX = contentW / 2;
-
+  const renderPrintPage = useCallback((canvas, side, pixelsPerMm, showPlaceholder = true) => {
+    const settings = normalizePrintSettings(printSettings);
+    const layout = getPrintLayout(dims, hasTab, settings);
+    const { width, height } = layout.paper;
+    canvas.width = Math.round(width * pixelsPerMm);
+    canvas.height = Math.round(height * pixelsPerMm);
+    const ctx = canvas.getContext('2d');
+    // 相同整頁尺寸映射到 PDF；消除舊版外殼額外 +0.2cm 後又壓縮的誤差。
+    ctx.setTransform(canvas.width / width, 0, 0, canvas.height / height, 0, 0);
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, width, height);
-
     ctx.save();
-    ctx.translate(startX, startY); 
-
-    const innerPath = (context) => {
-        context.moveTo(0, 0); 
-        
-        if (hasTab) {
-            context.lineTo(centerX - tabBaseW / 2, 0);
-            context.lineTo(centerX - tabTipW / 2, -tabH);
-            context.lineTo(centerX + tabTipW / 2, -tabH);
-            context.lineTo(centerX + tabBaseW / 2, 0);
-        }
-
-        context.lineTo(contentW, 0); 
-        context.lineTo(contentW, bodyH); 
-        context.lineTo(0, bodyH); 
-        context.closePath();
-    };
-
-    ctx.save();
-    ctx.beginPath();
-    innerPath(ctx);
-    ctx.clip();
-
-    if (images.inner && images.inner.src) {
-        const img = images.inner.src;
-        const areaCenterX = contentW / 2;
-        const areaCenterY = (bodyH - tabH) / 2;
-        
-        const scaleW = contentW / img.width;
-        const scaleH = (bodyH + tabH) / img.height;
-        const baseScale = Math.max(scaleW, scaleH);
-        const finalScale = images.inner.scale * baseScale;
-        const drawW = img.width * finalScale;
-        const drawH = img.height * finalScale;
-        const offsetX = images.inner.x * offsetMultiplier;
-        const offsetY = images.inner.y * offsetMultiplier;
-
-        ctx.translate(areaCenterX, areaCenterY);
-        ctx.drawImage(img, -drawW / 2 + offsetX, -drawH / 2 + offsetY, drawW, drawH);
+    if (side === 'outer') {
+      ctx.translate(layout.outer.x, layout.outer.y);
+      drawOuterLayer(ctx, layout.outer.width, layout.outer.height, 10, showPlaceholder);
     } else {
-        ctx.fillStyle = '#f8fafc';
-        const big = Math.max(contentW, totalH) * 2;
-        ctx.fillRect(-big/2, -big/2, big, big);
-        
-        ctx.fillStyle = '#94a3b8';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.translate(contentW / 2, bodyH / 2);
-        ctx.font = `bold ${cm(0.4)}px sans-serif`;
-        ctx.fillText(hasTab ? t('inner_with_tab') : t('inner_no_tab'), 0, 0);
+      const raw = createInnerArtwork(pixelsPerMm, showPlaceholder);
+      const back = layout.back;
+      const w = back.width, h = back.height, b = settings.bleed;
+      ctx.translate(back.x + w / 2, back.y + h / 2);
+      ctx.rotate(back.rotation);
+      ctx.translate(-w / 2, -h / 2);
+      ctx.drawImage(raw, 0, 0, w, h);
+      if (b > 0) {
+        const rw = raw.width, rh = raw.height;
+        // 四邊與四角採相同邊緣色延伸，讓原圖裁切位置維持一致。
+        ctx.drawImage(raw, 0, 0, rw, 1, 0, -b, w, b);
+        ctx.drawImage(raw, 0, rh - 1, rw, 1, 0, h, w, b);
+        ctx.drawImage(raw, 0, 0, 1, rh, -b, 0, b, h);
+        ctx.drawImage(raw, rw - 1, 0, 1, rh, w, 0, b, h);
+        ctx.drawImage(raw, 0, 0, 1, 1, -b, -b, b, b);
+        ctx.drawImage(raw, rw - 1, 0, 1, 1, w, -b, b, b);
+        ctx.drawImage(raw, 0, rh - 1, 1, 1, -b, h, b, b);
+        ctx.drawImage(raw, rw - 1, rh - 1, 1, 1, w, h, b, b);
+      }
+      raw.width = raw.height = 1;
     }
     ctx.restore();
-
-    ctx.strokeStyle = '#334155';
-    ctx.lineWidth = cm(0.06);
-    ctx.beginPath();
-    innerPath(ctx);
-    ctx.stroke();
-
-    ctx.restore();
-
-  }, [images, dims, hasTab, t]);
+  }, [dims, hasTab, printSettings, drawOuterLayer, createInnerArtwork]);
 
   useEffect(() => {
     if (appMode !== 'editor') return;
+    if (outerCanvasRef.current) renderPrintPage(outerCanvasRef.current, 'outer', 4);
+    if (innerMode === 'image' && innerCanvasRef.current) renderPrintPage(innerCanvasRef.current, 'inner', 4);
+  }, [appMode, innerMode, renderPrintPage]);
 
-    const canvas = outerCanvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    const totalHeightCm = dims.frontHeight + dims.backHeight + dims.pocketHeight + dims.buttonTab.h;
-    const totalWidthCm = dims.width + (dims.glueTab.w * 2) + 0.5;
-    
-    canvas.width = totalWidthCm * PREVIEW_PIXELS_PER_CM;
-    canvas.height = totalHeightCm * PREVIEW_PIXELS_PER_CM;
-    drawOuterLayer(ctx, canvas.width, canvas.height, PREVIEW_PIXELS_PER_CM);
-  }, [images, dims, drawOuterLayer, appMode]);
-
-  useEffect(() => {
-    if (appMode !== 'editor') return;
-
-    const canvas = innerCanvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    const contentW_cm = dims.width + 1;
-    const contentH_cm = dims.innerTotalHeight + dims.buttonTab.h + 1;
-    canvas.width = contentW_cm * PREVIEW_PIXELS_PER_CM;
-    canvas.height = contentH_cm * PREVIEW_PIXELS_PER_CM;
-    drawInnerLayer(ctx, canvas.width, canvas.height, PREVIEW_PIXELS_PER_CM);
-  }, [images, dims, drawInnerLayer, appMode]);
-
-  const handleDownloadPDF = async (mode) => {
-    if (!window.jspdf) {
-      alert("PDF 模組尚未載入完成，請稍候再試。");
-      return;
+  const handleDownloadPDF = async (kind = 'design') => {
+    if (downloadLockRef.current) return;
+    const settings = normalizePrintSettings(printSettings);
+    const layout = getPrintLayout(dims, hasTab, settings);
+    const includeInner = innerMode === 'image';
+    if (kind === 'design') {
+      if (getPrintBounds(layout, settings, includeInner).outside) { setOutputError(t('paper_overflow')); return; }
+      if (includeInner && !images.inner?.src) { setOutputError(t('missing_inner')); return; }
     }
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF('l', 'mm', 'a4'); 
-    const pageWidth = 297; 
-    const pageHeight = 210; 
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
+    downloadLockRef.current = true;
+    setIsGenerating(true);
+    setOutputError('');
+    let canvas;
+    try {
+      await loadPdfLibrary();
+      setJsPDFLoaded(true);
+      setPdfLoadError(false);
+      // 讓按鈕的處理中狀態先顯示，再產生高解析度畫布。
+      await new Promise(resolve => setTimeout(resolve, 0));
+      const { jsPDF } = window.jspdf;
+      const { width, height } = layout.paper;
+      const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: [width, height], compress: true });
+      doc.setProperties({ title: kind === 'calibration' ? 'Ticket Holder Duplex Calibration' : 'DIY Ticket Holder' });
 
-    const outerTotalHeightCm = dims.frontHeight + dims.backHeight + dims.pocketHeight + dims.buttonTab.h;
-    const outerTotalWidthCm = dims.width + (dims.glueTab.w * 2); 
-    const outerTotalHeightMm = outerTotalHeightCm * 10;
-    const outerTopMargin = (pageHeight - outerTotalHeightMm) / 2;
-
-    const processOuter = () => {
-        const canvasW = (outerTotalWidthCm + 0.2) * PRINT_PIXELS_PER_CM;
-        const canvasH = outerTotalHeightCm * PRINT_PIXELS_PER_CM;
-        canvas.width = canvasW;
-        canvas.height = canvasH;
-        drawOuterLayer(ctx, canvas.width, canvas.height, PRINT_PIXELS_PER_CM);
-        const imgData = canvas.toDataURL('image/jpeg', 1.0);
-        const pdfImgWidth = outerTotalWidthCm * 10; 
-        const pdfImgHeight = outerTotalHeightCm * 10; 
-        const x = (pageWidth - pdfImgWidth) / 2;
-        const y = outerTopMargin;
-        doc.addImage(imgData, 'JPEG', x, y, pdfImgWidth, pdfImgHeight);
-    };
-
-    const processInner = () => {
-        const contentW_cm = dims.width;
-        const contentH_cm = dims.innerTotalHeight + dims.buttonTab.h;
-        canvas.width = contentW_cm * PRINT_PIXELS_PER_CM;
-        canvas.height = contentH_cm * PRINT_PIXELS_PER_CM;
-        
-        if (activeIbonMode) {
-            ctx.save();
-            ctx.translate(canvas.width / 2, canvas.height / 2);
-            ctx.rotate(Math.PI);
-            ctx.translate(-canvas.width / 2, -canvas.height / 2);
+      if (kind === 'calibration') {
+        // 刻意不對稱，避免翻頁方向錯誤卻因標記對稱而看似對齊。
+        const points = [
+          { x: 40, y: 40 },
+          { x: width - 45, y: 58 },
+          { x: 63, y: height - 48 },
+        ];
+        const flipText = settings.flip === 'long' ? 'LONG edge (top/bottom)' : 'SHORT edge (left/right)';
+        for (let page = 0; page < 2; page += 1) {
+          if (page === 1) doc.addPage([width, height], 'landscape');
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(14);
+          doc.text(page === 0 ? 'FRONT / F: cross targets' : 'BACK / B: circle targets', 15, 15);
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(9);
+          doc.text(`${settings.paper.toUpperCase()} landscape | Actual size 100% | Duplex: ${flipText}`, 15, 22);
+          doc.text(page === 0 ? 'Print both pages on ONE sheet. Match F1/B1, F2/B2 and F3/B3 against a light.'
+            : `View this side with BACK readable. X+: right. Y+: down. Applied X=${settings.offsetX} mm, Y=${settings.offsetY} mm.`, 15, 28);
+          doc.setLineWidth(0.2);
+          doc.setDrawColor(20);
+          points.forEach((point, index) => {
+            const x = page === 0 ? point.x : (settings.flip === 'short' ? width - point.x : point.x) + settings.offsetX;
+            const y = page === 0 ? point.y : (settings.flip === 'long' ? height - point.y : point.y) + settings.offsetY;
+            if (page === 0) {
+              doc.line(x - 5, y, x + 5, y);
+              doc.line(x, y - 5, x, y + 5);
+            } else {
+              doc.circle(x, y, 3);
+              doc.circle(x, y, 0.35);
+            }
+            doc.text(`${page === 0 ? 'F' : 'B'}${index + 1}`, x + 6, y - 5);
+          });
+          // 100mm 水平尺與 100mm 垂直尺，檢查是否縮放或單軸變形。
+          const rulerX = (width - 100) / 2, rulerY = height - 16;
+          doc.line(rulerX, rulerY, rulerX + 100, rulerY);
+          for (let i = 0; i <= 100; i += 10) doc.line(rulerX + i, rulerY - 2, rulerX + i, rulerY + 2);
+          doc.text('100 mm (measure before adjusting position)', width / 2, rulerY - 5, { align: 'center' });
+          const verticalX = width / 2, verticalY = (height - 100) / 2;
+          doc.line(verticalX, verticalY, verticalX, verticalY + 100);
+          doc.line(verticalX - 2, verticalY, verticalX + 2, verticalY);
+          doc.line(verticalX - 2, verticalY + 100, verticalX + 2, verticalY + 100);
+          doc.text('100 mm', verticalX + 4, height / 2);
         }
-        drawInnerLayer(ctx, canvas.width, canvas.height, PRINT_PIXELS_PER_CM);
-        if (activeIbonMode) ctx.restore();
-        
-        const imgData = canvas.toDataURL('image/jpeg', 1.0);
-        const pdfTotalW = contentW_cm * 10;
-        const pdfTotalH = contentH_cm * 10;
-        let finalImageY;
-        let x = (pageWidth - pdfTotalW) / 2;
-
-        if (activeIbonMode) {
-            const p1BlockStartMm = (dims.buttonTab.h * 10);
-            const p1BlockHeightMm = (dims.frontHeight + dims.backHeight) * 10;
-            const p1BlockCenterRelativeMm = p1BlockStartMm + (p1BlockHeightMm / 2);
-            const p1BlockCenterAbsoluteY = outerTopMargin + p1BlockCenterRelativeMm;
-            const p2TargetCenterY = pageHeight - p1BlockCenterAbsoluteY;
-            const imageContentHeightMm = contentH_cm * 10;
-            finalImageY = p2TargetCenterY - (imageContentHeightMm / 2);
-            
-            finalImageY = finalImageY - 1; // 垂直校正 (上移 1mm)
-            x = x + 2; // 水平校正 (右移 2mm)
-        } else {
-            const bodyInImageOffsetY = (pdfTotalH - (dims.innerTotalHeight * 10)) / 2;
-            const targetBodyY = outerTopMargin + (dims.buttonTab.h * 10);
-            finalImageY = outerTopMargin;
+      } else {
+        canvas = document.createElement('canvas');
+        renderPrintPage(canvas, 'outer', 300 / 25.4, false);
+        doc.addImage(canvas.toDataURL('image/jpeg', 0.98), 'JPEG', 0, 0, width, height);
+        if (includeInner) {
+          doc.addPage([width, height], 'landscape');
+          renderPrintPage(canvas, 'inner', 300 / 25.4, false);
+          doc.addImage(canvas.toDataURL('image/jpeg', 0.98), 'JPEG', 0, 0, width, height);
         }
-        
-        doc.addImage(imgData, 'JPEG', x, finalImageY, pdfTotalW, pdfTotalH);
-    };
-
-    if (mode === 'combined') {
-        processOuter();
-        doc.text(t('pdf_page1_text'), 10, 10);
-        doc.addPage();
-        processInner();
-        if (activeIbonMode) {
-            doc.text(t('pdf_page2_ibon'), 10, 10);
-        } else {
-            doc.text(t('pdf_page2_normal'), 10, 10);
-        }
-        doc.save('ticket-holder-complete.pdf');
+      }
+      const suffix = kind === 'calibration' ? `calibration-${settings.flip}` : includeInner ? `duplex-${settings.flip}` : 'single-sided';
+      await doc.save(`ticket-holder-${settings.paper}-${suffix}.pdf`, { returnPromise: true });
+    } catch (error) {
+      console.error('Ticket holder PDF export failed:', error);
+      setOutputError(t('pdf_export_error'));
+      if (!window.jspdf?.jsPDF) { setJsPDFLoaded(false); setPdfLoadError(true); }
+    } finally {
+      if (canvas) canvas.width = canvas.height = 1;
+      downloadLockRef.current = false;
+      setIsGenerating(false);
     }
   };
+
 
   if (appMode === 'landing') {
     return <LandingPage onStart={() => setAppMode('setup')} t={t} lang={lang} setLang={setLang} />;
@@ -1462,15 +1625,27 @@ const App = () => {
           </div>
         </header>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 mb-12">
+        <section className="mb-6 rounded-2xl border border-indigo-100 bg-white p-5" aria-labelledby="interior-heading">
+          <h2 id="interior-heading" className="font-bold text-slate-800 mb-3">{t('interior_title')}</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {['image', 'blank'].map(value => <button key={value} type="button" aria-pressed={innerMode === value}
+              onClick={() => changeInnerMode(value)}
+              className={`text-left rounded-xl border-2 p-4 transition-colors ${innerMode === value ? 'border-indigo-500 bg-indigo-50' : 'border-slate-200 bg-white hover:border-indigo-200'}`}>
+              <span className="block font-bold text-slate-800">{t(value === 'image' ? 'interior_image' : 'interior_blank')}</span>
+              <span className="block text-sm text-slate-500 mt-1">{t(value === 'image' ? 'interior_image_desc' : 'interior_blank_desc')}</span>
+            </button>)}
+          </div>
+        </section>
+
+        <div className={`grid grid-cols-1 md:grid-cols-2 ${isSingleSided ? 'xl:grid-cols-3' : 'xl:grid-cols-4'} gap-6 mb-8`}>
             <ImageEditorCard 
                 id="front" 
                 label={t('front')} 
-                sub={`${dims.width} x ${dims.frontHeight} cm`} 
+                sub={`${dims.width} x ${Number((dims.frontHeight + (hasTab ? dims.buttonTab.h : 0)).toFixed(2))} cm`} 
                 colorBadge="from-pink-400 to-rose-400"
                 imageState={images.front}
                 widthCm={dims.width}
-                heightCm={dims.frontHeight} 
+                heightCm={dims.frontHeight + (hasTab ? dims.buttonTab.h : 0)} 
                 onUpload={handleImageUpload}
                 onUpdate={updateImageSettings}
                 onRemove={removeImage}
@@ -1502,148 +1677,130 @@ const App = () => {
                 onRemove={removeImage}
                 t={t}
             />
-            <ImageEditorCard 
+            {!isSingleSided && <ImageEditorCard 
                 id="inner" 
                 label={t('inner')} 
-                sub={`${dims.width} x ${dims.innerTotalHeight} cm`} 
+                sub={`${dims.width} x ${innerHeightCm} cm`} 
                 colorBadge="from-violet-400 to-purple-400"
                 imageState={images.inner}
                 widthCm={dims.width}
-                heightCm={dims.innerTotalHeight} 
+                heightCm={innerHeightCm} 
                 onUpload={handleImageUpload}
                 onUpdate={updateImageSettings}
                 onRemove={removeImage}
                 t={t}
-            />
+            />}
         </div>
 
-        <div className="bg-white rounded-3xl shadow-xl shadow-indigo-100/50 border border-indigo-50 p-6 md:p-8 mb-10 overflow-hidden relative">
-            <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-50 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 opacity-50 pointer-events-none"></div>
-            
-            <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-8">
-                <div className="flex-1">
-                    <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-3">
-                        <div className="p-2 bg-indigo-100 rounded-lg text-indigo-600">
-                            <Layers size={24} />
-                        </div>
-                        {t('output_setting')}
-                    </h2>
-                    <p className="text-slate-500 mt-2 leading-relaxed">
-                        {t('output_desc')}
-                    </p>
-                </div>
+        <section className="bg-white rounded-3xl shadow-xl shadow-indigo-100/50 border border-indigo-50 p-6 md:p-8 mb-10" aria-labelledby="output-heading">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
+            <div>
+              <h2 id="output-heading" className="text-2xl font-bold text-slate-800 flex items-center gap-3">
+                <Layers className="text-indigo-600" size={24} /> {t('output_setting')}
+              </h2>
+              <p className="text-slate-500 mt-2">{t('output_desc')}</p>
+            </div>
+            <button type="button" onClick={() => handleDownloadPDF('design')}
+              disabled={!jsPDFLoaded || isGenerating || printBounds.outside || (!isSingleSided && !images.inner?.src)}
+              className="flex items-center justify-center gap-2 px-6 py-4 rounded-2xl font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed">
+              <FileText size={20} />
+              {isGenerating ? t('downloading') : t(isSingleSided ? 'download_single' : 'download_double')}
+            </button>
+          </div>
 
-                <div className="flex flex-col sm:flex-row items-center gap-4 w-full md:w-auto">
-                    {/* 按鈕區域：如果是中文顯示切換按鈕，英文則隱藏 */}
-                    {lang === 'zh-TW' && (
-                        <div className="flex bg-indigo-50 p-1 rounded-xl">
-                            <button 
-                                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all ${isIbonMode ? 'bg-white shadow-sm text-indigo-600 ring-1 ring-indigo-100' : 'text-slate-500 hover:text-slate-700'}`}
-                                onClick={() => setIsIbonMode(true)}
-                            >
-                                <Store size={16} />
-                                {t('ibon_mode')}
-                            </button>
-                            <button 
-                                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all ${!isIbonMode ? 'bg-white shadow-sm text-indigo-600 ring-1 ring-indigo-100' : 'text-slate-500 hover:text-slate-700'}`}
-                                onClick={() => setIsIbonMode(false)}
-                            >
-                                <Printer size={16} />
-                                {t('self_mode')}
-                            </button>
-                        </div>
-                    )}
-                    
-                    <button 
-                        onClick={() => handleDownloadPDF('combined')}
-                        className={`
-                            relative overflow-hidden w-full sm:w-auto flex items-center justify-center gap-3 px-8 py-4 rounded-2xl 
-                            font-bold text-white shadow-lg shadow-indigo-500/30 transition-all duration-300
-                            active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed
-                            bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500
-                        `}
-                    >
-                        <FileText size={20} /> 
-                        <span>{t('download_pdf')}</span>
-                    </button>
-                </div>
+          <div className={`grid grid-cols-1 ${!isSingleSided ? 'md:grid-cols-3' : 'md:grid-cols-2'} gap-4 mt-6`}>
+            <label className="text-sm font-semibold text-slate-700">
+              {t('paper_size')}
+              <select value={settings.paper} onChange={event => changePrintSetting('paper', event.target.value)}
+                className="mt-2 block w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
+                <option value="a4">{t('paper_a4')}</option>
+                <option value="a3">{t('paper_a3')}</option>
+              </select>
+            </label>
+            {!isSingleSided && <>
+              <label className="text-sm font-semibold text-slate-700">
+                {t('flip_edge')}
+                <select value={settings.flip} onChange={event => changePrintSetting('flip', event.target.value)}
+                  className="mt-2 block w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
+                  <option value="long">{t('flip_long')}</option>
+                  <option value="short">{t('flip_short')}</option>
+                </select>
+              </label>
+              <label className="text-sm font-semibold text-slate-700">
+                {t('bleed')}
+                <select value={settings.bleed} onChange={event => changePrintSetting('bleed', Number(event.target.value))}
+                  className="mt-2 block w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
+                  {[0, 1, 2, 3, 4, 5].map(value => <option key={value} value={value}>{value === 0 ? t('bleed_none') : `${value} mm`}</option>)}
+                </select>
+              </label>
+            </>}
+          </div>
+
+          <div className="mt-5 p-4 rounded-xl bg-indigo-50 text-indigo-800 text-sm leading-relaxed">
+            <p className="font-semibold flex items-start gap-2"><Printer className="shrink-0 mt-0.5" size={17} />{t(isSingleSided ? 'print_single_hint' : 'print_double_hint')}</p>
+            {!isSingleSided && <div className="mt-2 ml-6 space-y-1"><p>{t('flip_hint')}</p><p>{t('bleed_help')}</p></div>}
+          </div>
+
+          {autoPaperNotice && <p className="mt-3 text-sm text-indigo-700">{t('paper_auto_a3')}</p>}
+          {printBounds.outside ? <p role="alert" className="mt-3 text-sm font-semibold text-red-600">{t('paper_overflow')}</p>
+            : printBounds.nearEdge && <p className="mt-3 text-sm text-amber-700">{t('paper_margin_warning')}</p>}
+          {!isSingleSided && !images.inner?.src && <p className="mt-3 text-sm text-amber-700">{t('missing_inner')}</p>}
+          {!jsPDFLoaded && !pdfLoadError && <p role="status" className="mt-3 text-sm text-slate-500">{t('pdf_loading')}</p>}
+          {pdfLoadError && <div role="alert" className="mt-3 text-sm text-red-600">
+            {t('pdf_load_error')}
+            <button type="button" onClick={() => setPdfLoadAttempt(attempt => attempt + 1)} className="ml-2 font-bold underline">{t('pdf_retry')}</button>
+          </div>}
+          {outputError && <p role="alert" className="mt-3 text-sm text-red-600">{outputError}</p>}
+
+          {!isSingleSided && <details className="mt-6 border border-slate-200 rounded-2xl p-4 md:p-5">
+            <summary className="font-bold text-slate-700 cursor-pointer">{t('calibration_title')}</summary>
+            <div className="mt-4 space-y-4 text-sm text-slate-600 leading-relaxed">
+              <p>{t('calibration_steps')}</p>
+              <button type="button" onClick={() => handleDownloadPDF('calibration')} disabled={!jsPDFLoaded || isGenerating}
+                className="inline-flex items-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 font-semibold text-indigo-700 hover:bg-indigo-100 disabled:opacity-50">
+                <Ruler size={18} /> {t('download_calibration')}
+              </button>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {[['offsetX', 'offset_x'], ['offsetY', 'offset_y']].map(([key, label]) => <label key={key} className="font-medium">
+                  {t(label)}
+                  <input type="number" min="-10" max="10" step="0.1" value={printSettings[key]}
+                    onChange={event => changePrintSetting(key, event.target.value)}
+                    onBlur={event => changePrintSetting(key, clampNumber(event.target.value, -10, 10))}
+                    className="mt-2 block w-full rounded-xl border border-slate-200 bg-slate-50 p-3 font-mono" />
+                </label>)}
+              </div>
+              <p>{t('offset_help')}</p>
+              <p className="rounded-lg bg-slate-50 p-3">{t('calibration_example')}</p>
+              <button type="button" onClick={() => { setPrintSettings(previous => ({ ...previous, offsetX: 0, offsetY: 0 })); setOutputError(''); }}
+                className="text-indigo-600 font-semibold underline">{t('calibration_reset')}</button>
+              <p className="text-xs text-slate-500">{t('calibration_limits')} {t('calibration_saved')}</p>
             </div>
-            
-            <div className="relative z-10 mt-4 text-center">
-                {activeIbonMode ? (
-                    <span className="text-xs text-indigo-600 bg-white/50 px-3 py-1.5 rounded-full border border-indigo-100/50 flex flex-col md:flex-row items-center justify-center gap-1.5 w-fit mx-auto">
-                        <span className="flex items-center gap-1.5">
-                            <Sparkles size={12} className="text-amber-500" />
-                            {t('ibon_hint')}
-                        </span>
-                        <span className="text-rose-500 ml-1 font-bold flex items-center gap-1">
-                            <AlertTriangle size={12} />
-                            {t('self_warn')}
-                        </span>
-                    </span>
-                ) : (
-                    <span className="text-xs text-slate-500 bg-white/50 px-3 py-1.5 rounded-full border border-slate-200/50 flex flex-col md:flex-row items-center justify-center gap-1.5 w-fit mx-auto">
-                        <span className="flex items-center gap-1.5">
-                            <Home size={12} />
-                            {t('self_hint')}
-                        </span>
-                        {/* 英文模式下不顯示雙面列印警告，因為通常預設單面印 */}
-                        {lang === 'zh-TW' && (
-                            <span className="text-rose-500 ml-1 font-bold flex items-center gap-1">
-                                <AlertTriangle size={12} />
-                                {t('self_warn')}
-                            </span>
-                        )}
-                    </span>
-                )}
+          </details>}
+        </section>
+
+        <h2 className="text-lg font-bold text-slate-700 mb-4">{t('actual_pdf_preview')} · {settings.paper.toUpperCase()}</h2>
+        <div className={`grid grid-cols-1 ${!isSingleSided ? 'lg:grid-cols-2' : ''} gap-8`}>
+          <section className="bg-white p-4 md:p-6 rounded-3xl shadow-xl border border-slate-100">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+              <h3 className="font-bold text-slate-700">{t('page1')}</h3>
+              <span className="text-xs text-slate-500 font-mono">{printLayout.outer.width.toFixed(1)} × {printLayout.outer.height.toFixed(1)} mm</span>
             </div>
+            <canvas ref={outerCanvasRef} className="w-full h-auto bg-white shadow border border-slate-200 rounded-sm" />
+          </section>
+          {!isSingleSided ? <section className="bg-white p-4 md:p-6 rounded-3xl shadow-xl border border-slate-100">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+              <h3 className="font-bold text-slate-700">{t('page2')}</h3>
+              <span className="text-xs text-slate-500 font-mono">X {settings.offsetX} mm · Y {settings.offsetY} mm</span>
+            </div>
+            <canvas ref={innerCanvasRef} className="w-full h-auto bg-white shadow border border-slate-200 rounded-sm" />
+            <p className="mt-3 text-xs text-slate-500">{t('back_preview_hint')}</p>
+          </section> : <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-5 text-slate-500 text-sm">
+            <p className="font-bold text-slate-700 mb-1">{t('inner_blank_preview')}</p>
+            <p>{t('inner_blank_note')}</p>
+          </div>}
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            <div className="bg-white p-6 rounded-3xl shadow-xl border border-slate-100 flex flex-col items-center">
-                <div className="w-full flex justify-between items-center mb-6 px-2">
-                    <h3 className="font-bold text-slate-700 flex items-center gap-2">
-                        <span className="w-8 h-8 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center text-sm font-bold">1</span>
-                        {t('page1')}
-                    </h3>
-                    <span className="text-xs font-mono text-slate-400 bg-slate-50 px-2 py-1 rounded">{dims.width + (dims.glueTab.w*2)} x {dims.frontHeight+dims.backHeight+dims.pocketHeight+dims.buttonTab.h} cm</span>
-                </div>
-                <div className="w-full bg-slate-50 rounded-xl border-2 border-dashed border-slate-200 p-4 flex justify-center overflow-auto">
-                    <canvas ref={outerCanvasRef} className="bg-white shadow-lg max-w-full h-auto rounded-sm" style={{ maxHeight: '500px' }} />
-                </div>
-            </div>
 
-            <div className={`
-                bg-white p-6 rounded-3xl shadow-xl border border-slate-100 flex flex-col items-center transition-all duration-500
-                ${activeIbonMode ? 'ring-2 ring-indigo-500/30 shadow-indigo-100' : ''}
-            `}>
-                <div className="w-full flex justify-between items-center mb-6 px-2">
-                    <h3 className="font-bold text-slate-700 flex items-center gap-2">
-                        <span className="w-8 h-8 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center text-sm font-bold">2</span>
-                        {t('page2')} <span className="text-xs font-normal text-slate-500">{hasTab ? t('page2_tab') : t('page2_no_tab')}</span>
-                    </h3>
-                    {activeIbonMode ? (
-                        <span className="flex items-center gap-1.5 text-xs font-bold text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-full border border-indigo-100">
-                            <ArrowDown size={14} />
-                            {t('calibrated')}
-                        </span>
-                    ) : (
-                        <span className="text-xs font-mono text-slate-400 bg-slate-50 px-2 py-1 rounded">{dims.width} x {dims.innerTotalHeight + dims.buttonTab.h} cm</span>
-                    )}
-                </div>
-                <div className="w-full bg-slate-50 rounded-xl border-2 border-dashed border-slate-200 p-4 flex justify-center overflow-auto relative">
-                    <canvas ref={innerCanvasRef} className="bg-white shadow-lg max-w-full h-auto rounded-sm" style={{ maxHeight: '500px' }} />
-                    {activeIbonMode && (
-                        <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-                            <div className="bg-black/50 text-white px-4 py-2 rounded-lg backdrop-blur-sm text-sm font-medium">
-                                {t('rotate_msg')}
-                            </div>
-                        </div>
-                    )}
-                </div>
-            </div>
-        </div>
-        
         <footer className="mt-16 text-center pb-8 border-t border-slate-200 pt-8">
             <p className="text-slate-400 text-sm font-medium">
                 {t('footer')}
